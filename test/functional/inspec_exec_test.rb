@@ -178,6 +178,27 @@ Test Summary: 0 successful, 0 failures, 0 skipped
     assert_exit_code 100, out
   end
 
+  it "executes only specified controls when selecting the controls by literal names" do
+    inspec("exec " + File.join(profile_path, "controls-option-test") + " --no-create-lockfile --controls foo")
+    _(out.stdout).must_include "foo"
+    _(out.stdout).wont_include "bar"
+    _(out.stdout).wont_include "only-describe"
+    _(stderr).must_equal ""
+
+    assert_exit_code 0, out
+  end
+
+  it "executes only specified controls when selecting the controls by regex" do
+    inspec("exec " + File.join(profile_path, "controls-option-test") + " --no-create-lockfile --controls '/^11_pass/'")
+    _(out.stdout).must_include "11_pass"
+    _(out.stdout).must_include "11_pass2"
+    _(out.stdout).wont_include "bar"
+    _(out.stdout).wont_include "only-describe"
+    _(stderr).must_equal ""
+
+    assert_exit_code 0, out
+  end
+
   it "executes only specified controls when selecting passing controls by literal names" do
     inspec("exec " + File.join(profile_path, "filter_table") + " --no-create-lockfile --controls 2943_pass_undeclared_field_in_hash 2943_pass_irregular_row_key")
 
@@ -389,7 +410,7 @@ Test Summary: 2 successful, 0 failures, 0 skipped\n"
       _(stdout).must_include "×  tmp-1.0: Create / directory (1 failed)"
       _(stdout).must_include "×  is expected not to be directory\n"
       _(stdout).must_include "×  File / \n     undefined method `should_nota'"
-      _(stdout).must_include "×  is expected not to be directory\n     expected `File /.directory?` to return false, got true"
+      _(stdout).must_include "×  is expected not to be directory\n     expected `File /.directory?` to be falsey, got true"
       _(stdout).must_include "×  7 is expected to cmp >= 9\n"
       _(stdout).must_include "×  7 is expected not to cmp == /^\\d$/\n"
       _(stdout).must_include "✔  7 is expected to cmp == \"7\""
@@ -405,7 +426,7 @@ Test Summary: 2 successful, 0 failures, 0 skipped\n"
       _(stdout).must_include "×  tmp-1.0: Create / directory (1 failed)"
       _(stdout).must_include "×  cmp-1.0: Using the cmp matcher for numbers (2 failed)"
       _(stdout).must_include "×  File / \n     undefined method `should_nota'"
-      _(stdout).must_include "×  is expected not to be directory\n     expected `File /.directory?` to return false, got true"
+      _(stdout).must_include "×  is expected not to be directory\n     expected `File /.directory?` to be falsey, got true"
       _(stdout).must_include "✔  profiled-1: Create / directory (profile d)"
     end
   end
@@ -456,8 +477,8 @@ Test Summary: 2 successful, 0 failures, 0 skipped\n"
 
   describe "when using profiles on the supermarket" do
     it "can run supermarket profiles directly from the command line" do
-      skip_windows! # can't modify /tmp -> / because it is in supermarket
 
+      skip_windows! # Breakage confirmed, only on CI: https://buildkite.com/chef-oss/inspec-inspec-master-verify/builds/2355#2c9d032e-4a24-4e7c-aef2-1c9e2317d9e2
       inspec("exec supermarket://nathenharvey/tmp-compliance-profile --no-create-lockfile")
 
       if is_windows?
@@ -476,7 +497,7 @@ Test Summary: 2 successful, 0 failures, 0 skipped\n"
     end
 
     it "can run supermarket profiles from inspec.yml" do
-      skip_windows! # can't modify /tmp -> / because it is in supermarket
+      skip_windows! # Breakage confirmed, only on CI: https://buildkite.com/chef-oss/inspec-inspec-master-verify/builds/2355#2c9d032e-4a24-4e7c-aef2-1c9e2317d9e2
 
       inspec("exec #{File.join(profile_path, "supermarket-dep")} --no-create-lockfile")
 
@@ -1027,6 +1048,39 @@ Test Summary: 2 successful, 0 failures, 0 skipped\n"
         _(@json.dig("profiles", 0, "controls", 1, "results", 0, "status")).must_equal "skipped"
         _(@json.dig("profiles", 0, "controls", 2, "results", 0, "status")).must_equal "skipped"
         _(@json.dig("profiles", 0, "controls", 3, "results", 0, "status")).must_equal "skipped"
+      end
+    end
+  end
+
+  describe "when running a profile using timeouts on a command resource" do
+    let(:profile) { "#{profile_path}/timeouts" }
+
+    describe "when using the DSL command resource option" do
+      let(:run_result) { run_inspec_process("exec #{profile}") }
+
+      it "properly timesout an inlined command resource" do
+        # Command timeout not available on local windows pipe train transports
+        skip if windows?
+        _(run_result.stderr).must_be_empty
+
+        # Control with inline timeout should be interrupted correctly
+        _(run_result.stdout).must_include "Command `sleep 10; echo oops` timed out after 2 seconds"
+        # Subsequent control must still run correctly
+        _(run_result.stdout).must_include "Command: `echo hello` exit_status is expected to cmp == 0"
+      end
+    end
+
+    describe "when using the CLI option to override the command timeout" do
+      let(:run_result) { run_inspec_process("exec #{profile} --command-timeout 1") }
+      it "properly overrides the DSL setting with the CLI timeout option" do
+        # Command timeout not available on local windows pipe train transports
+        skip if windows?
+        _(run_result.stderr).must_be_empty
+
+        # Command timeout should be interrupted correctly, with CLI timeout applied
+        _(run_result.stdout).must_include "Command `sleep 10; echo oops` timed out after 1 seconds"
+        # Subsequent control must still run correctly
+        _(run_result.stdout).must_include "Command: `echo hello` exit_status is expected to cmp == 0"
       end
     end
   end

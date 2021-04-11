@@ -1,4 +1,4 @@
-require "pry"
+autoload :Pry, "pry"
 
 module Inspec
   # A pry based shell for inspec. Given a runner (with a configured backend and
@@ -137,7 +137,7 @@ module Inspec
         end
 
         info += "#{mark "Web Reference:"}\n\n"
-        info += "https://www.inspec.io/docs/reference/resources/#{topic}\n\n"
+        info += "https://docs.chef.io/inspec/resources/#{topic}\n\n"
         puts info
       else
         begin
@@ -208,7 +208,7 @@ module Inspec
 
           its('content') { should_not match /^MyKey:\\s+some value/ }
 
-        For more examples, see: https://www.inspec.io/docs/reference/matchers/
+        For more examples, see: https://docs.chef.io/inspec/matchers/
 
       EOL
     end

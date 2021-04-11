@@ -1,4 +1,4 @@
-require "thor"
+require "thor" # rubocop:disable Chef/Ruby/UnlessDefinedRequire
 require "inspec/log"
 require "inspec/ui"
 require "inspec/config"
@@ -60,7 +60,7 @@ module Inspec
       true
     end
 
-    def self.target_options # rubocop:disable MethodLength
+    def self.target_options # rubocop:disable Metrics/MethodLength
       option :target, aliases: :t, type: :string,
         desc: "Simple targeting option using URIs, e.g. ssh://user:pass@host:port"
       option :backend, aliases: :b, type: :string,
@@ -118,6 +118,10 @@ module Inspec
         desc: "Disable SSL verification on select targets"
       option :target_id, type: :string,
         desc: "Provide a ID which will be included on reports"
+      option :winrm_shell_type, type: :string, default: "powershell",
+        desc: "Specify a shell type for winrm (eg. 'elevated' or 'powershell')"
+      option :docker_url, type: :string,
+        desc: "Provides path to Docker API endpoint (Docker)"
     end
 
     def self.profile_options
@@ -136,7 +140,7 @@ module Inspec
         banner: "one two:/output/file/path",
         desc: "Enable one or more output reporters: cli, documentation, html, progress, json, json-min, json-rspec, junit, yaml"
       option :reporter_message_truncation, type: :string,
-        desc: "Number of characters to truncate failure messages in report data to (default: no truncation)"
+        desc: "Number of characters to truncate failure messages and code_desc in report data to (default: no truncation)"
       option :reporter_backtrace_inclusion, type: :boolean,
         desc: "Include a code backtrace in report data (default: true)"
       option :input, type: :array, banner: "name1=value1 name2=value2",
@@ -158,6 +162,21 @@ module Inspec
       option :silence_deprecations, type: :array,
         banner: "[all]|[GROUP GROUP...]",
         desc: "Suppress deprecation warnings. See install_dir/etc/deprecations.json for list of GROUPs or use 'all'."
+      option :diff, type: :boolean, default: true,
+        desc: "Use --no-diff to suppress 'diff' output of failed textual test results."
+      option :sort_results_by, type: :string, default: "file", banner: "--sort-results-by=none|control|file|random",
+        desc: "After normal execution order, results are sorted by control ID, or by file (default), or randomly. None uses legacy unsorted mode."
+      option :filter_empty_profiles, type: :boolean, default: false,
+        desc: "Filter empty profiles (profiles without controls) from the report."
+      option :command_timeout, type: :numeric, default: 3600,
+        desc: "Maximum seconds to allow commands to run during execution. Default 3600.",
+        long_desc: "Maximum seconds to allow commands to run during execution. Default 3600. A timed out command is considered an error."
+    end
+
+    def self.help(*args)
+      super(*args)
+      puts "\nAbout #{Inspec::Dist::PRODUCT_NAME}:"
+      puts "  Patents: chef.io/patents\n\n"
     end
 
     def self.format_platform_info(params: {}, indent: 0, color: 39)

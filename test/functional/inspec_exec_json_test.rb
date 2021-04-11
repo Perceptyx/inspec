@@ -1,5 +1,6 @@
 require "functional/helper"
 require "json_schemer"
+require "tempfile"
 
 describe "inspec exec with json formatter" do
   include FunctionalHelper
@@ -41,7 +42,6 @@ describe "inspec exec with json formatter" do
 
     _(out.stderr).must_equal ""
 
-    skip_windows!
     assert_exit_code 0, out
   end
 
@@ -188,6 +188,29 @@ describe "inspec exec with json formatter" do
       _(ex1["impact"]).must_equal 0.7
     end
 
+    describe "results" do
+      let(:result) { ex1["results"][0] }
+      let(:result2) { ex2["results"][0] }
+
+      it "has a code_desc" do
+        _(result["code_desc"]).must_equal "File / is expected to be directory"
+      end
+
+      it "has a resource_class" do
+        _(result["resource_class"]).must_equal "file"
+      end
+
+      # This is a raw grep of the argument(s) passed to the resource, currently
+      # used by automate to identify and sort differing resources
+      it "has a resource_params that's empty" do
+        _(result["resource_params"]).must_equal "[\"/\"]"
+      end
+
+      it "has a resource_params with values" do
+        _(result2["resource_params"]).must_equal "[\"/\"]"
+      end
+    end
+
     it "has all the metadata" do
       actual = profile.dup
       key = actual.delete("controls")
@@ -286,6 +309,10 @@ describe "inspec exec with json formatter" do
       _(control_with_message["results"].first["message"]).wont_be :nil?
       _(control_with_message["results"].first["message"]).must_equal "expected nil to match /some regex that is expected in the content/"
     end
+    it "reports full code_desc by default" do
+      _(control_with_message["results"].first["code_desc"]).wont_be :nil?
+      _(control_with_message["results"].first["code_desc"]).must_equal "File / content is expected to match /some regex that is expected in the content/"
+    end
   end
 
   describe "JSON reporter with reporter-message-truncation set to a number" do
@@ -297,6 +324,23 @@ describe "inspec exec with json formatter" do
       _(control_with_message["results"].first["message"]).wont_be :nil?
       _(control_with_message["results"].first["message"]).must_equal "expected nil to matc[Truncated to 20 characters]"
     end
+    it "reports a truncated code_desc" do
+      _(control_with_message["results"].first["code_desc"]).wont_be :nil?
+      _(control_with_message["results"].first["code_desc"]).must_equal "File / content is ex[Truncated to 20 characters]"
+    end
+  end
+
+  describe "JSON reporter with reporter-message-truncation set to a number and working message" do
+    let(:raw) { inspec("exec " + failure_control + " --reporter json --reporter-message-truncation=10000 --no-create-lockfile").stdout }
+    let(:json) { JSON.load(raw) }
+    let(:profile) { json["profiles"][0] }
+    let(:control_with_message) { profile["controls"].find { |c| c["id"] == "Generates a message" } }
+    it "does not report a truncated message" do
+      assert !control_with_message["results"].first["message"].include?("Truncated")
+    end
+    it "does not report a truncated code_desc" do
+      assert !control_with_message["results"].first["code_desc"].include?("Truncated")
+    end
   end
 
   describe "JSON reporter with reporter-message-truncation set to ALL" do
@@ -307,6 +351,10 @@ describe "inspec exec with json formatter" do
     it "reports full message" do
       _(control_with_message["results"].first["message"]).wont_be :nil?
       _(control_with_message["results"].first["message"]).must_equal "expected nil to match /some regex that is expected in the content/"
+    end
+    it "reports full code_desc" do
+      _(control_with_message["results"].first["code_desc"]).wont_be :nil?
+      _(control_with_message["results"].first["code_desc"]).must_equal "File / content is expected to match /some regex that is expected in the content/"
     end
   end
 
@@ -345,5 +393,154 @@ describe "inspec exec with json formatter" do
     it "does not report backtrace" do
       _(failed_result["backtrace"]).must_be :nil?
     end
+  end
+
+  describe "JSON reporter using the --diff/--no-diff options" do
+    describe "JSON reporter with --diff option" do
+      let(:run_result) { run_inspec_process("exec #{profile_path}/diff-output --diff", json: true) }
+      let(:controls) { @json["profiles"][0]["controls"] }
+      it "runs normally with --diff" do
+        _(run_result.stderr).must_be_empty
+        _(controls[1]["results"][0]["message"]).must_include "got:"
+        _(controls[1]["results"][0]["message"]).must_include "Diff:"
+        _(controls[2]["results"][0]["message"]).must_include "got:"
+        assert_exit_code(100, run_result)
+      end
+    end
+
+    describe "JSON reporter with --no-diff option" do
+      let(:run_result) { run_inspec_process("exec #{profile_path}/diff-output --no-diff", json: true) }
+      let(:controls) { @json["profiles"][0]["controls"] }
+      it "suppresses the diff" do
+        _(run_result.stderr).must_be_empty
+        _(controls[1]["results"][0]["message"]).must_include "got:"
+        _(controls[1]["results"][0]["message"]).wont_include "Diff:"
+        _(controls[1]["results"][0]["message"]).wont_include "vegetable"
+        _(controls[2]["results"][0]["message"]).must_include "got:" # non-textual tests don't do diffs
+        assert_exit_code(100, run_result)
+      end
+    end
+  end
+
+  describe "JSON reporter" do
+    describe "with --no-filter-empty-profiles option" do
+      let(:run_result) { run_inspec_process("exec #{profile_path}/dependencies/uses-resource-pack --no-filter-empty-profiles", json: true) }
+      let(:profiles) { @json["profiles"] }
+
+      it "does not filter the empty profiles(profiles without controls)" do
+        _(run_result.stderr).must_be_empty
+        _(profiles.count).must_equal 2
+      end
+    end
+
+    describe "with --filter-empty-profiles option" do
+      let(:run_result) { run_inspec_process("exec #{profile_path}/dependencies/uses-resource-pack --filter-empty-profiles", json: true) }
+      let(:profiles) { @json["profiles"] }
+
+      it "does filter the empty profiles (profiles without controls)" do
+        _(run_result.stderr).must_be_empty
+        _(profiles.count).must_equal 1
+      end
+    end
+  end
+
+  describe "JSON reporter using the --sort-results-by option" do
+    let(:run_result) { run_inspec_process("exec #{profile_path}/sorted-results/sort-me-1 --sort-results-by #{sort_option}", json: true) }
+    let(:control_order) { @json["profiles"][0]["controls"].map { |c| c["id"] }.join("") }
+
+    describe "when sending it a bad value for the option" do
+      let(:sort_option) { "garbage" }
+      it "should exit with a usage message" do
+        _(run_result.stderr).must_include "--sort-results-by must be one of none, control, file, random"
+        assert_exit_code(1, run_result)
+      end
+    end
+
+    describe "when using --sort-results-by file" do
+      let(:sort_option) { "file" }
+      it "should sort by file" do
+        _(run_result.stderr).must_be_empty
+        _(control_order).must_equal "wvuzyxtsr"
+      end
+    end
+
+    describe "when using --sort-results-by control" do
+      let(:sort_option) { "control" }
+      it "should sort by contol" do
+        _(run_result.stderr).must_be_empty
+        _(control_order).must_equal "rstuvwxyz"
+      end
+    end
+
+    describe "when using --sort-results-by random" do
+      let(:sort_option) { "random" }
+      it "should sort randomly" do
+        _(run_result.stderr).must_be_empty
+        _(control_order).wont_equal "wvuzyxtsr"
+      end
+    end
+  end
+
+  # Issue 5300
+  describe "deep skip control" do
+    let(:run_result) { run_inspec_process("exec #{profile_path}/dependencies/deep-skip-outer", json: true) }
+    let(:inner_profile_controls) { @json["profiles"][2]["controls"] }
+    it "skips a control two levels down" do
+      _(run_result.stderr).must_be_empty
+      # Should skip the second control labelled "skipme" because there is a skip_control in the outer profile
+      _(inner_profile_controls.count).must_equal 1
+    end
+  end
+
+  describe "JSON reporter with a config" do
+    let(:config_path) do
+      @file = Tempfile.new("config.json")
+      @file.write(config_data)
+      @file.close
+      @file.path
+    end
+
+    after do
+      @file.unlink
+    end
+
+    let(:invocation) do
+      "exec #{complete_profile} --config #{config_path}"
+    end
+
+    let(:run_result) { run_inspec_process(invocation) }
+
+    describe "and the config specifies passthrough data" do
+      let(:config_data) do
+        <<~END
+          {
+            "reporter": {
+              "json": {
+                "stdout": true,
+                "passthrough": {
+                  "a": 1,
+                  "b": false
+                }
+              }
+            }
+          }
+        END
+      end
+
+      it "should include passthrough data" do
+        _(run_result.stderr).must_equal ""
+
+        json = JSON.parse(run_result.stdout)
+
+        %w{
+          passthrough
+        }.each do |field|
+          _(json.keys).must_include field
+        end
+
+        assert_exit_code 0, run_result
+      end
+    end
+
   end
 end

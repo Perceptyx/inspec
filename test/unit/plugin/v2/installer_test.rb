@@ -9,9 +9,14 @@ Gem.done_installing_hooks.clear # Remove rdoc generation
 
 module InstallerTestHelpers
   RUN_SLOW = ENV["SLOW"]
+  RUN_LIVE_NET = ENV["LIVE_NET"]
 
   def skip_slow_tests
     skip "slow" unless RUN_SLOW
+  end
+
+  def skip_live_net_tests
+    skip "This test talks on the network" unless RUN_LIVE_NET
   end
 
   def reset_globals
@@ -34,7 +39,8 @@ module InstallerTestHelpers
   @@orig_home = Dir.home
 
   def setup
-    WebMock.disable_net_connect!(allow: %r{(api\.)?rubygems\.org/.*})
+    WebMock.disable_net_connect!(allow: %r{(api\.)?rubygems\.org/.*}) if RUN_LIVE_NET
+
     repo_path = File.expand_path(File.join( __FILE__, "..", "..", "..", "..", ".."))
     mock_path = File.join(repo_path, "test", "fixtures")
 
@@ -120,6 +126,8 @@ class PluginInstallerInstallationTests < Minitest::Test
   end
 
   def test_install_a_gem_from_local_file
+    skip_live_net_tests # This still accesses rubygems.org to check for deps
+
     gem_file = File.join(@plugin_fixture_pkg_path, "inspec-test-fixture-0.1.0.gem")
 
     assert_operator File, :exist?, gem_file
@@ -153,9 +161,10 @@ class PluginInstallerInstallationTests < Minitest::Test
   end
 
   def test_install_a_gem_from_local_file_creates_plugin_json
+    skip_live_net_tests # This still accesses rubygems.org to check for deps
+
     gem_file = File.join(@plugin_fixture_pkg_path, "inspec-test-fixture-0.1.0.gem")
     stdout, _stderr = capture_io do
-      skip_windows!
       @installer.install("inspec-test-fixture", gem_file: gem_file)
     end
 
@@ -176,8 +185,8 @@ class PluginInstallerInstallationTests < Minitest::Test
 
   def test_install_a_gem_from_rubygems_org
     skip_slow_tests
+    skip_live_net_tests
 
-    skip_windows!
     capture_subprocess_io do
       @installer.install("inspec-test-fixture")
     end
@@ -203,14 +212,15 @@ class PluginInstallerInstallationTests < Minitest::Test
 
   def test_handle_no_such_gem
     skip_slow_tests
+    skip_live_net_tests
 
     assert_raises(Inspec::Plugin::V2::InstallError) { @installer.install("inspec-test-fixture-nonesuch") }
   end
 
   # Should be able to install a plugin while pinning the version
   def test_install_a_pinned_gem_from_rubygems_org
-    skip_windows!
     skip_slow_tests
+    skip_live_net_tests
 
     capture_subprocess_io do
       @installer.install("inspec-test-fixture", version: "= 0.1.0")
@@ -229,6 +239,8 @@ class PluginInstallerInstallationTests < Minitest::Test
   end
 
   def test_install_a_gem_with_conflicting_depends_from_rubygems_org
+    skip_live_net_tests
+
     spec = Gem::Specification._all.find { |s| s.name == "rake" }
     spec.activate
 
@@ -240,6 +252,7 @@ class PluginInstallerInstallationTests < Minitest::Test
 
   def test_install_a_gem_with_invalid_depends_from_rubygems_org
     skip_slow_tests
+    skip_live_net_tests
 
     ex = assert_raises(Inspec::Plugin::V2::InstallError) do
       @installer.install("inspec-test-fixture", version: "= 0.1.2")
@@ -319,10 +332,10 @@ class PluginInstallerUpdaterTests < Minitest::Test
 
   def test_update_to_latest_version
     skip_slow_tests
+    skip_live_net_tests
 
     copy_in_config_dir("test-fixture-1-float")
     @installer.__reset_loader
-    skip_windows!
 
     capture_subprocess_io do
       @installer.update("inspec-test-fixture")
@@ -343,12 +356,12 @@ class PluginInstallerUpdaterTests < Minitest::Test
 
   def test_update_to_specified_later_version
     skip_slow_tests
+    skip_live_net_tests
 
     copy_in_config_dir("test-fixture-1-float")
     @installer.__reset_loader
 
     # Update to specific (but later) version
-    skip_windows!
 
     capture_subprocess_io do
       @installer.update("inspec-test-fixture", version: "0.2.0")
@@ -416,7 +429,6 @@ class PluginInstallerUninstallTests < Minitest::Test
     copy_in_config_dir("test-fixture-1-float")
     @installer.__reset_loader
 
-    skip_windows!
     capture_subprocess_io do
       @installer.uninstall("inspec-test-fixture")
     end
@@ -444,7 +456,6 @@ class PluginInstallerUninstallTests < Minitest::Test
     copy_in_config_dir("test-fixture-2-float")
     @installer.__reset_loader
 
-    skip_windows!
     capture_subprocess_io do
       @installer.uninstall("inspec-test-fixture")
     end
@@ -493,6 +504,8 @@ class PluginInstallerSearchTests < Minitest::Test
   end
 
   def test_search_for_plugin_by_exact_name
+    skip_live_net_tests
+
     results = @installer.search("inspec-test-fixture", exact: true)
     assert_kind_of Hash, results, "Results from searching should be a Hash"
     assert results.key?("inspec-test-fixture"), "Search results should have a key for the sought plugin"
@@ -503,11 +516,15 @@ class PluginInstallerSearchTests < Minitest::Test
   end
 
   def test_search_for_plugin_that_does_not_exist
+    skip_live_net_tests
+
     results = @installer.search("inspec-test-fixture-nonesuch", exact: true)
     assert_empty results
   end
 
   def test_search_for_plugin_by_wildard
+    skip_live_net_tests
+
     results = @installer.search("inspec-test-")
     assert_kind_of Hash, results, "Results from searching should be a Hash"
     assert results.key?("inspec-test-fixture"), "Search results should have a key for at least one plugin"
@@ -518,6 +535,7 @@ class PluginInstallerSearchTests < Minitest::Test
 
   def test_search_omits_inspec_gem_on_the_reject_list
     skip_slow_tests
+    skip_live_net_tests
 
     results = @installer.search("inspec-")
     assert results.key?("inspec-test-fixture")
@@ -535,6 +553,8 @@ class PluginInstallerSearchTests < Minitest::Test
   end
 
   def test_search_omits_train_gem_on_the_reject_list
+    skip_live_net_tests
+
     results = @installer.search("train-")
     assert results.key?("train-test-fixture")
 

@@ -1,4 +1,4 @@
-require "json"
+require "json" unless defined?(JSON)
 
 module Inspec::Reporters
   # rubocop:disable Layout/AlignHash, Style/BlockDelimiters
@@ -8,7 +8,7 @@ module Inspec::Reporters
     end
 
     def report
-      {
+      output = {
         platform: platform,
         profiles: profiles,
         statistics: {
@@ -16,6 +16,11 @@ module Inspec::Reporters
         },
         version: run_data[:version],
       }
+
+      %w{passthrough}.each do |option|
+        output[option.to_sym] = @config[option] unless @config[option].nil?
+      end
+      output
     end
 
     private
@@ -40,6 +45,8 @@ module Inspec::Reporters
           message:      r[:message],
           exception:    r[:exception],
           backtrace:    r[:backtrace],
+          resource_class: r[:resource_class],
+          resource_params: r[:resource_params].to_s,
         }.reject { |_k, v| v.nil? }
       }
     end

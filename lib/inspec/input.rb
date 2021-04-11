@@ -14,14 +14,17 @@ module Inspec
   class Input
 
     class Error < Inspec::Error; end
+
     class ValidationError < Error
       attr_accessor :input_name
       attr_accessor :input_value
       attr_accessor :input_type
     end
+
     class TypeError < Error
       attr_accessor :input_type
     end
+
     class RequiredError < Error
       attr_accessor :input_name
     end
@@ -171,7 +174,7 @@ module Inspec
     # are free to go higher.
     DEFAULT_PRIORITY_FOR_VALUE_SET = 60
 
-    attr_reader :description, :events, :identifier, :name, :required, :title, :type
+    attr_reader :description, :events, :identifier, :name, :required, :sensitive, :title, :type
 
     def initialize(name, options = {})
       @name = name
@@ -264,6 +267,7 @@ module Inspec
       @required = options[:required] if options.key?(:required)
       @identifier = options[:identifier] if options.key?(:identifier) # TODO: determine if this is ever used
       @type = options[:type] if options.key?(:type)
+      @sensitive = options[:sensitive] if options.key?(:sensitive)
     end
 
     def make_creation_event(options)
@@ -320,7 +324,7 @@ module Inspec
 
     def to_hash
       as_hash = { name: name, options: {} }
-      %i{description title identifier type required value}.each do |field|
+      %i{description title identifier type required value sensitive}.each do |field|
         val = send(field)
         next if val.nil?
 
@@ -334,7 +338,7 @@ module Inspec
     #--------------------------------------------------------------------------#
 
     def to_s
-      "Input #{name} with #{current_value}"
+      "Input #{name} with value " + (sensitive ? "*** (senstive)" : "#{current_value}")
     end
 
     #--------------------------------------------------------------------------#

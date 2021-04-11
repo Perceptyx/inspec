@@ -48,7 +48,8 @@ class Inspec::InspecCLI < Inspec::BaseCLI
     desc: "Allow or disable user interaction"
 
   class_option :disable_core_plugins, type: :string, banner: "", # Actually a boolean, but this suppresses the creation of a --no-disable...
-    desc: "Disable loading all plugins that are shipped in the lib/plugins directory of InSpec. Useful in development."
+    desc: "Disable loading all plugins that are shipped in the lib/plugins directory of InSpec. Useful in development.",
+    hide: true
 
   class_option :disable_user_plugins, type: :string, banner: "",
     desc: "Disable loading all plugins that the user installed."
@@ -66,7 +67,7 @@ class Inspec::InspecCLI < Inspec::BaseCLI
     desc: "A list of controls to include. Ignore all other tests."
   profile_options
   def json(target)
-    require "json"
+    require "json" unless defined?(JSON)
 
     o = config
     diagnose(o)
@@ -194,7 +195,8 @@ class Inspec::InspecCLI < Inspec::BaseCLI
     pretty_handle_exception(e)
   end
 
-  desc "exec LOCATIONS", <<~EOT
+  desc "exec LOCATIONS", "Run all tests at LOCATIONS."
+  long_desc <<~EOT
     Run all test files at the specified LOCATIONS.
 
     Loads the given profile(s) and fetches their dependencies if needed. Then
@@ -319,6 +321,9 @@ class Inspec::InspecCLI < Inspec::BaseCLI
     desc: "A space-delimited list of local folders containing profiles whose libraries and resources will be loaded into the new shell"
   option :distinct_exit, type: :boolean, default: true,
     desc: "Exit with code 100 if any tests fail, and 101 if any are skipped but none failed (default).  If disabled, exit 0 on skips and 1 for failures."
+  option :command_timeout, type: :numeric, default: 3600,
+      desc: "Maximum seconds to allow a command to run. Default 3600.",
+      long_desc: "Maximum seconds to allow commands to run. Default 3600. A timed out command is considered an error."
   option :inspect, type: :boolean, default: false, desc: "Use verbose/debugging output for resources."
   def shell_func
     o = config
@@ -392,6 +397,20 @@ class Inspec::InspecCLI < Inspec::BaseCLI
     end
   end
   map %w{-v --version} => :version
+
+  desc "clear_cache", "clears the InSpec cache. Useful for debugging."
+  option :vendor_cache, type: :string,
+    desc: "Use the given path for caching dependencies. (default: ~/.inspec/cache)"
+  def clear_cache
+    o = config
+    configure_logger(o)
+    cache_path = o[:vendor_cache] || "~/.inspec/cache"
+    FileUtils.rm_r Dir.glob(File.expand_path(cache_path))
+
+    o[:logger] = Logger.new($stdout)
+    o[:logger].level = get_log_level(o[:log_level])
+    o[:logger].info "== InSpec cache cleared successfully =="
+  end
 
   private
 

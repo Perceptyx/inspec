@@ -1,9 +1,30 @@
 # copyright: 2015, Vulcano Security GmbH
 
 require "inspec/resources/command"
-require "shellwords"
+require "shellwords" unless defined?(Shellwords)
 
 module Inspec::Resources
+  class Lines
+    attr_reader :output, :stdout, :stderr, :exit_status
+
+    def initialize(raw, desc, exit_status)
+      @output = raw
+      @desc = desc
+      @exit_status = exit_status
+      # backwards compatibility
+      @stdout = raw
+      @stderr = raw
+    end
+
+    def lines
+      output.split("\n")
+    end
+
+    def to_s
+      @desc
+    end
+  end
+
   class MysqlSession < Inspec.resource(1)
     name "mysql_session"
     supports platform: "unix"
@@ -12,7 +33,7 @@ module Inspec::Resources
     example <<~EXAMPLE
       sql = mysql_session('my_user','password','host')
       describe sql.query('show databases like \'test\';') do
-        its('stdout') { should_not match(/test/) }
+        its('output') { should_not match(/test/) }
       end
     EXAMPLE
 
@@ -28,15 +49,17 @@ module Inspec::Resources
 
     def query(q, db = "")
       mysql_cmd = create_mysql_cmd(q, db)
-      cmd = inspec.command(mysql_cmd)
+      cmd = if !@pass.nil?
+              inspec.command(mysql_cmd, redact_regex: /(mysql -u\w+ -p).+(\s-(h|S).*)/)
+            else
+              inspec.command(mysql_cmd)
+            end
       out = cmd.stdout + "\n" + cmd.stderr
-      if out =~ /Can't connect to .* MySQL server/ || out.downcase =~ /^error /
-        # skip this test if the server can't run the query
-        warn("Can't connect to MySQL instance for SQL checks.")
+      if cmd.exit_status != 0 || out =~ /Can't connect to .* MySQL server/ || out.downcase =~ /^error:.*/
+        Lines.new(out, "MySQL query with errors: #{q}", cmd.exit_status)
+      else
+        Lines.new(cmd.stdout.strip, "MySQL query: #{q}", cmd.exit_status)
       end
-
-      # return the raw command output
-      cmd
     end
 
     def to_s

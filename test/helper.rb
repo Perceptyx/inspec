@@ -147,8 +147,10 @@ class Minitest::Test
     skip msg
   end
 
+  # These tests are being worked on. These are github issues for them.
+  # Related: https://github.com/inspec/inspec/pull/5063
   def skip_windows!
-    skip_until 2020, 9, 1, "These have never passed" if windows?
+    skip "These have never passed" if windows?
   end
 
   def unmock(&blk)

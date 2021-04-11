@@ -3,7 +3,6 @@ require "inspec/resource"
 require "resources/aws/aws_config_recorder"
 
 require "resource_support/aws"
-require "resources/aws/aws_config_recorder"
 
 # MCRSB = MockConfigRecorderSingleBackend
 # Abbreviation not used outside this file
@@ -125,9 +124,9 @@ module AwsMCRSB
         }),
       }
       if query.empty?
-        return recorders["default"]
+        recorders["default"]
       elsif recorders.key?(query[:configuration_recorder_names][0])
-        return recorders[query[:configuration_recorder_names][0]]
+        recorders[query[:configuration_recorder_names][0]]
       else
         raise Aws::ConfigService::Errors::NoSuchConfigurationRecorderException.new(nil, nil)
       end

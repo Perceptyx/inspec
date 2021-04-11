@@ -1,4 +1,4 @@
-lib = File.expand_path("../lib", __FILE__)
+lib = File.expand_path("lib", __dir__)
 $LOAD_PATH.unshift(lib) unless $LOAD_PATH.include?(lib)
 require "inspec/version"
 
@@ -13,7 +13,7 @@ Gem::Specification.new do |spec|
   spec.license       = "Apache-2.0"
   spec.require_paths = ["lib"]
 
-  spec.required_ruby_version = "~> 2.4"
+  spec.required_ruby_version = ">= 2.5"
 
   # ONLY the aws/azure/gcp files. The rest will come in from inspec-core
   # the gemspec is necessary for appbundler so don't remove it
@@ -27,7 +27,7 @@ Gem::Specification.new do |spec|
   spec.add_dependency "train", "~> 3.0"
 
   # Used for Azure profile until integrated into train
-  spec.add_dependency "faraday_middleware", "~> 0.12.2"
+  spec.add_dependency "faraday_middleware", ">= 0.12.2", "< 1.1"
 
   # Train plugins we ship with InSpec
   spec.add_dependency "train-habitat", "~> 0.1"

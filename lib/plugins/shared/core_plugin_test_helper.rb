@@ -3,14 +3,14 @@ require "minitest/autorun"
 require "minitest/pride"
 
 # Data formats commonly used in testing
-require "json"
-require "ostruct"
+require "json" unless defined?(JSON)
+require "ostruct" unless defined?(OpenStruct)
 
 # Utilities often needed
-require "fileutils"
-require "tmpdir"
-require "pathname"
-require "forwardable"
+require "fileutils" unless defined?(FileUtils)
+require "tmpdir" unless defined?(Dir.mktmpdir)
+require "pathname" unless defined?(Pathname)
+require "forwardable" unless defined?(Forwardable)
 
 require "functional/helper"
 require "inspec/plugin/v2"
@@ -49,22 +49,6 @@ end
 module CorePluginFunctionalHelper
   include CorePluginBaseHelper
   include FunctionalHelper
-
-  # TODO: so much duplication! Remove everything we can!
-  require "train"
-  TRAIN_CONNECTION = Train.create("local", command_runner: :generic).connection
-
-  # TODO: remove me! it's in test/functional/helper.rb
-  def run_inspec_process(command_line, opts = {})
-    prefix = ""
-    if opts.key?(:prefix)
-      prefix = opts[:prefix]
-    elsif opts.key?(:env)
-      prefix = assemble_env_prefix opts[:env]
-    end
-
-    TRAIN_CONNECTION.run_command("#{prefix} #{exec_inspec} #{command_line}")
-  end
 
   # This helper does some fancy footwork to make InSpec think a plugin
   # under development is temporarily installed.

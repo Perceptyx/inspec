@@ -1,7 +1,7 @@
 # copyright: 2015, Vulcano Security GmbH
 
 require "inspec/utils/filter"
-require "ostruct"
+require "ostruct" unless defined?(OpenStruct)
 require "inspec/resources/command"
 
 module Inspec::Resources
@@ -138,7 +138,7 @@ module Inspec::Resources
           command: 8,
         }
       else
-        command = "ps axo label,pid,pcpu,pmem,vsz,rss,tty,stat,start,time,user:32,command"
+        command = "ps wwaxo label,pid,pcpu,pmem,vsz,rss,tty,stat,start,time,user:32,command"
         regex = /^(.+?)\s+(\d+)\s+([^ ]+)\s+([^ ]+)\s+([^ ]+)\s+([^ ]+)\s+([^ ]+)\s+([^ ]+)\s+(\w{3} \d{2}|\d{2}:\d{2}:\d{2})\s+([^ ]+)\s+([^ ]+)\s+(.*)$/
         field_map = {
           label: 1,

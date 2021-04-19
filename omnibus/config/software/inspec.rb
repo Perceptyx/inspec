@@ -14,13 +14,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-require_relative "../../../lib/inspec/version.rb"
+require_relative "../../../lib/inspec/version"
 
 name "inspec"
 
 dependency "ruby"
-dependency "rubygems"
-dependency "bundler"
 
 license :project_license
 
@@ -39,6 +37,9 @@ build do
   # appbundle-lock to are definitely installed
   bundle "install --without test integration tools maintenance", env: env
 
+  gem "build #{name}-core.gemspec", env: env
+  gem "install #{name}-core*.gem --no-document", env: env
+
   gem "build #{name}.gemspec", env: env
   gem "install #{name}-*.gem --no-document", env: env
 
@@ -46,10 +47,12 @@ build do
   gem "install inspec-bin-*.gem --no-document", env: env, cwd: "#{project_dir}/inspec-bin"
 
   block do
-    if Dir.exist?("#{project_dir}/inspec-bin")
-      appbundle "inspec", lockdir: project_dir, gem: "inspec-bin", env: env
-    else
-      appbundle "inspec", env: env
-    end
+    appbundle "inspec", lockdir: project_dir, gem: "inspec-bin", env: env
+  end
+
+  block "Delete test folder from problem gems" do
+    env["VISUAL"] = "echo"
+    gem_install_dir = shellout!("#{install_dir}/embedded/bin/gem open rubyzip", env: env).stdout.chomp
+    remove_directory "#{gem_install_dir}/test"
   end
 end

@@ -1,8 +1,8 @@
 # Chef InSpec: Inspect Your Infrastructure
 
 * **Project State: Active**
-* **Issues Response SLA: 3 business days**
-* **Pull Request Response SLA: 3 business days**
+* **Issues Response SLA: 14 business days**
+* **Pull Request Response SLA: 14 business days**
 
 For more information on project states and SLAs, see [this documentation](https://github.com/chef/chef-oss-practices/blob/master/repo-management/repo-states.md).
 
@@ -24,7 +24,7 @@ describe inetd_conf do
 end
 ```
 
-Chef InSpec makes it easy to run your tests wherever you need. More options are found in our [CLI docs](https://www.inspec.io/docs/reference/cli/).
+Chef InSpec makes it easy to run your tests wherever you need. More options are found in our [CLI docs](https://docs.chef.io/inspec/cli/).
 
 ```bash
 # run test locally
@@ -55,7 +55,12 @@ inspec exec test.rb -t docker://container_id
 
 ## Installation
 
-Chef InSpec requires Ruby ( >= 2.4 ).
+Chef InSpec requires Ruby ( >= 2.6 ). Ruby 2.5 support is limited and requires Bundler with an entry in the Gemfile:
+
+```
+  # 16.7.23 required ruby 2.6+
+  gem "chef-utils", "< 16.7.23"
+```
 
 Note: Versions of Chef InSpec 4.0 and later require accepting the EULA to use. Please visit the [license acceptance page](https://docs.chef.io/chef_license_accept.html) on the Chef docs site for more information.
 
@@ -141,7 +146,7 @@ That requires [bundler](http://bundler.io/):
 
 ```bash
 bundle install
-bundle exec bin/inspec help
+bundle exec inspec help
 ```
 
 To install it as a gem locally, run:
@@ -305,19 +310,19 @@ Remote Targets
 | Platform                     | Versions                                         | Architectures |
 | ---------------------------- | ------------------------------------------------ | ------------- |
 | AIX                          | 6.1, 7.1, 7.2                                    | ppc64         |
-| CentOS                       | 5, 6, 7                                          | i386, x86_64  |
-| Debian                       | 7, 8, 9                                          | i386, x86_64  |
+| CentOS                       | 6, 7, 8                                          | i386, x86_64  |
+| Debian                       | 9, 10                                            | i386, x86_64  |
 | FreeBSD                      | 9, 10, 11                                        | i386, amd64   |
-| Mac OS X                     | 10.9, 10.10, 10.11, 10.12, 10.13, 10.14          | x86_64        |
-| Oracle Enterprise Linux      | 5, 6, 7                                          | i386, x86_64  |
-| Red Hat Enterprise Linux     | 5, 6, 7                                          | i386, x86_64  |
+| macOS                        | 10.14, 10.15, 11.0                               | x86_64        |
+| Oracle Enterprise Linux      | 6, 7, 8                                          | i386, x86_64  |
+| Red Hat Enterprise Linux     | 6, 7, 8                                          | i386, x86_64  |
 | Solaris                      | 10, 11                                           | sparc, x86    |
-| Windows\*                    | 7, 8, 8.1, 10, 2008, 2008R2 , 2012, 2012R2, 2016 | x86, x86_64   |
+| Windows\*                    | 8, 8.1, 10, 2012, 2012R2, 2016, 2019             | x86, x86_64   |
 | Ubuntu Linux                 |                                                  | x86, x86_64   |
-| SUSE Linux Enterprise Server | 11, 12                                           | x86_64        |
-| Scientific Linux             | 5.x, 6.x and 7.x                                 | i386, x86_64  |
+| SUSE Linux Enterprise Server | 12, 15                                           | x86_64        |
+| Scientific Linux             | 6, 7                                             | i386, x86_64  |
 | Fedora                       |                                                  | x86_64        |
-| OpenSUSE                     | 13, 42                                           | x86_64        |
+| OpenSUSE                     | 15                                               | x86_64        |
 | OmniOS                       |                                                  | x86_64        |
 | Gentoo Linux                 |                                                  | x86_64        |
 | Arch Linux                   |                                                  | x86_64        |
@@ -329,27 +334,28 @@ In addition, runtime support is provided for:
 
 | Platform | Versions | Arch   |
 | -------- | -------- | ------ |
-| Debian   | 8, 9     | x86_64 |
-| RHEL     | 6, 7     | x86_64 |
-| Ubuntu   | 12.04+   | x86_64 |
-| Windows  | 7+       | x86_64 |
+| macOS    | 10.14+   | x86_64 |
+| Debian   | 9, 10    | x86_64 |
+| RHEL     | 6, 7, 8  | x86_64 |
+| Ubuntu   | 16.04+   | x86_64 |
+| Windows  | 8+       | x86_64 |
 | Windows  | 2012+    | x86_64 |
 
 ## Documentation
 
 Documentation
 
- * https://www.inspec.io/docs/
- * https://www.inspec.io/docs/reference/resources/
- * https://github.com/chef/inspec/tree/master/docs
+ * https://docs.chef.io/inspec/
+ * https://docs.chef.io/inspec/resources/
+ * https://github.com/inspec/inspec/tree/master/docs-chef-io
 
-Tutorials/Blogs/Podcasts:
+Learn Chef:
 
- * https://www.inspec.io/tutorials/
+ * https://community.chef.io/products/chef-inspec/#learn
 
 Relationship to other tools (RSpec, Serverspec):
 
- * https://www.inspec.io/docs/reference/inspec_and_friends/
+ * https://docs.chef.io/inspec/inspec_and_friends/
 
 ## Share your Profiles
 
@@ -449,7 +455,7 @@ Please see [TESTING_AGAINST_AWS.md](./test/integration/aws/TESTING_AGAINST_AWS.m
 
 Use the rake task `bundle exec rake test:azure` to test the Azure resources against an Azure account.
 
-Please see [TESTING_AGAINST_AZURE.md](./test/integration/aws/TESTING_AGAINST_AZURE.md) for details on how to setup the needed Azure accounts to perform testing.
+Please see [TESTING_AGAINST_AZURE.md](./test/integration/azure/TESTING_AGAINST_AZURE.md) for details on how to setup the needed Azure accounts to perform testing.
 
 ## License
 

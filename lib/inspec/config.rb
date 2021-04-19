@@ -1,11 +1,11 @@
 # Represents InSpec configuration.  Merges defaults, config file options,
 # and CLI arguments.
 
-require "pp"
-require "stringio"
-require "forwardable"
-require "thor"
-require "base64"
+require "pp" unless defined?(PP)
+require "stringio" unless defined?(StringIO)
+require "forwardable" unless defined?(Forwardable)
+require "thor" unless defined?(Thor)
+require "base64" unless defined?(Base64)
 require "inspec/plugin/v2/filter"
 
 module Inspec
@@ -44,7 +44,7 @@ module Inspec
     # Use this to get a cached version of the config.  This prevents you from
     # being required to pass it around everywhere.
     def self.cached
-      @cached_config
+      @cached_config ||= {}
     end
 
     def self.cached=(cfg)
@@ -128,10 +128,23 @@ module Inspec
     end
 
     #-----------------------------------------------------------------------#
-    #                      Fetching Plugin Data
+    #                      Handling Plugin Data
     #-----------------------------------------------------------------------#
     def fetch_plugin_config(plugin_name)
       Thor::CoreExt::HashWithIndifferentAccess.new(@plugin_cfg[plugin_name] || {})
+    end
+
+    def set_plugin_config(plugin_name, plugin_config)
+      plugin_name = plugin_name.to_s unless plugin_name.is_a? String
+
+      @plugin_cfg[plugin_name] = plugin_config
+    end
+
+    def merge_plugin_config(plugin_name, additional_plugin_config)
+      plugin_name = plugin_name.to_s unless plugin_name.is_a? String
+
+      @plugin_cfg[plugin_name] = {} if @plugin_cfg[plugin_name].nil?
+      @plugin_cfg[plugin_name].merge!(additional_plugin_config)
     end
 
     # clear the cached config
@@ -328,20 +341,33 @@ module Inspec
     def validate_reporters!(reporters)
       return if reporters.nil?
 
-      # TODO: move this into a reporter plugin type system
-      valid_types = %w{
-        automate
-        cli
+      # These "reporters" are actually RSpec Formatters.
+      # json-rspec is our alias for RSpec's json formatter.
+      rspec_built_in_formatters = %w{
         documentation
         html
+        json-rspec
+        progress
+      }
+
+      # These are true reporters, but have not been migrated to be plugins yet.
+      # Tracked on https://github.com/inspec/inspec/issues/3667
+      inspec_reporters_that_are_not_yet_plugins = %w{
+        automate
+        cli
         json
         json-automate
-        json-min
-        json-rspec
-        junit
-        progress
         yaml
       }
+
+      # Additional reporters may be loaded via plugins. They will have already been detected at
+      # this point (see v2_loader.load_all in cli.rb) but they may not (and need not) be
+      # activated at this point. We only care about their existance and their name, for validation's sake.
+      plugin_reporters = Inspec::Plugin::V2::Registry.instance\
+        .find_activators(plugin_type: :reporter)\
+        .map(&:activator_name).map(&:to_s)
+
+      valid_types = rspec_built_in_formatters + inspec_reporters_that_are_not_yet_plugins + plugin_reporters
 
       reporters.each do |reporter_name, reporter_config|
         raise NotImplementedError, "'#{reporter_name}' is not a valid reporter type." unless valid_types.include?(reporter_name)
@@ -360,6 +386,13 @@ module Inspec
       end
 
       raise ArgumentError, "The option --reporter can only have a single report outputting to stdout." if stdout_reporters > 1
+
+      # reporter_message_truncation needs to either be the string "ALL", an Integer, or a string representing an integer
+      if (truncation = @merged_options["reporter_message_truncation"])
+        unless truncation == "ALL" || truncation.is_a?(Integer) || truncation.to_i.to_s == truncation
+          raise ArgumentError, "reporter_message_truncation is set to #{truncation}. It must be set to an integer value or ALL to indicate no truncation."
+        end
+      end
     end
 
     def validate_plugins!
@@ -383,6 +416,18 @@ module Inspec
       end
 
       @plugin_cfg = data
+    end
+
+    def validate_sort_results_by!(option_value)
+      expected = %w{
+        none
+        control
+        file
+        random
+      }
+      return if expected.include? option_value
+
+      raise Inspec::ConfigError::Invalid, "--sort-results-by must be one of #{expected.join(", ")}"
     end
 
     #-----------------------------------------------------------------------#
@@ -415,6 +460,7 @@ module Inspec
       finalize_parse_reporters(options)
       finalize_handle_sudo(options)
       finalize_compliance_login(options)
+      finalize_sort_results(options)
 
       Thor::CoreExt::HashWithIndifferentAccess.new(options)
     end
@@ -486,6 +532,12 @@ module Inspec
       if options.key?("compliance")
         require "plugins/inspec-compliance/lib/inspec-compliance/api"
         InspecPlugins::Compliance::API.login(options["compliance"])
+      end
+    end
+
+    def finalize_sort_results(options)
+      if options.key?("sort_results_by")
+        validate_sort_results_by!(options["sort_results_by"])
       end
     end
 

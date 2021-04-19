@@ -32,6 +32,13 @@ module Inspec::Plugin::V2
 
       # Identify plugins that inspec is co-installed with
       detect_system_plugins unless options[:omit_sys_plugins]
+
+      # Train plugins are not true InSpec plugins; we need to decorate them a
+      # bit more to integrate them. Wait to do this until after we know if
+      # they are system or user.
+      registry.each do |plugin_name, status|
+        fixup_train_plugin_status(status) if train_plugin_name?(plugin_name)
+      end
     end
 
     def load_all
@@ -43,13 +50,21 @@ module Inspec::Plugin::V2
       # we want to allow "sidecar loading", in which case a plugin may add an entry to the registry.
       registry.plugin_names.dup.each do |plugin_name|
         plugin_details = registry[plugin_name]
+
+        # Under some conditions (kitchen-inspec with multiple test suites, for example), this may be
+        # called multple times. Don't reload anything.
+        next if plugin_details.loaded
+
         # We want to capture literally any possible exception here, since we are storing them.
         # rubocop: disable Lint/RescueException
         begin
           # We could use require, but under testing, we need to repeatedly reload the same
           # plugin.  However, gems only work with require (rubygems dooes not overload `load`)
-          if plugin_details.installation_type == :user_gem
+          case plugin_details.installation_type
+          when :user_gem
             activate_managed_gems_for_plugin(plugin_name)
+            require plugin_details.entry_point
+          when :system_gem
             require plugin_details.entry_point
           else
             load_path = plugin_details.entry_point
@@ -115,7 +130,7 @@ module Inspec::Plugin::V2
     end
 
     def self.plugin_gem_path
-      require "rbconfig"
+      require "rbconfig" unless defined?(RbConfig)
       ruby_abi_version = RbConfig::CONFIG["ruby_version"]
       # TODO: why are we installing under the api directory for plugins?
       base_dir = Inspec.config_dir
@@ -253,10 +268,6 @@ module Inspec::Plugin::V2
           status.entry_point = plugin_entry[:installation_path]
         end
 
-        # Train plugins are not true InSpec plugins; we need to decorate them a
-        # bit more to integrate them.
-        fixup_train_plugin_status(status) if train_plugin_name?(plugin_entry[:name])
-
         registry[status.name] = status
       end
     end
@@ -265,6 +276,8 @@ module Inspec::Plugin::V2
       status.api_generation = :'train-1'
       if status.installation_type == :user_gem
         # Activate the gem. This allows train to 'require' the gem later.
+        # This is not required for system gems because rubygems already has
+        # activated the gemspecs.
         activate_managed_gems_for_plugin(status.entry_point)
       end
     end

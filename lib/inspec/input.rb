@@ -14,14 +14,17 @@ module Inspec
   class Input
 
     class Error < Inspec::Error; end
+
     class ValidationError < Error
       attr_accessor :input_name
       attr_accessor :input_value
       attr_accessor :input_type
     end
+
     class TypeError < Error
       attr_accessor :input_type
     end
+
     class RequiredError < Error
       attr_accessor :input_name
     end
@@ -98,15 +101,15 @@ module Inspec
     # not been assigned a value. This allows a user to explicitly assign nil
     # to an input.
     class NO_VALUE_SET # rubocop: disable Naming/ClassAndModuleCamelCase
-      def initialize(name)
+      def initialize(name, warn_on_create = true)
         @name = name
 
         # output warn message if we are in a exec call
-        if Inspec::BaseCLI.inspec_cli_command == :exec
+        if warn_on_create && Inspec::BaseCLI.inspec_cli_command == :exec
           Inspec::Log.warn(
             "Input '#{@name}' does not have a value. "\
-            "Use --input-file to provide a value for '#{@name}' or specify a  "\
-            "value with `attribute('#{@name}', value: 'somevalue', ...)`."
+            "Use --input-file or --input to provide a value for '#{@name}' or specify a  "\
+            "value with `input('#{@name}', value: 'somevalue', ...)`."
           )
         end
       end
@@ -171,7 +174,7 @@ module Inspec
     # are free to go higher.
     DEFAULT_PRIORITY_FOR_VALUE_SET = 60
 
-    attr_reader :description, :events, :identifier, :name, :required, :title, :type
+    attr_reader :description, :events, :identifier, :name, :required, :sensitive, :title, :type
 
     def initialize(name, options = {})
       @name = name
@@ -264,6 +267,7 @@ module Inspec
       @required = options[:required] if options.key?(:required)
       @identifier = options[:identifier] if options.key?(:identifier) # TODO: determine if this is ever used
       @type = options[:type] if options.key?(:type)
+      @sensitive = options[:sensitive] if options.key?(:sensitive)
     end
 
     def make_creation_event(options)
@@ -277,7 +281,7 @@ module Inspec
     end
 
     # Determine the current winning value, but don't validate it
-    def current_value
+    def current_value(warn_on_missing = true)
       # Examine the events to determine highest-priority value. Tie-break
       # by using the last one set.
       events_that_set_a_value = events.select(&:value_has_been_set?)
@@ -287,7 +291,7 @@ module Inspec
 
       if winning_event.nil?
         # No value has been set - return special no value object
-        NO_VALUE_SET.new(name)
+        NO_VALUE_SET.new(name, warn_on_missing)
       else
         winning_event.value # May still be nil
       end
@@ -315,12 +319,12 @@ module Inspec
     end
 
     def has_value?
-      !current_value.is_a? NO_VALUE_SET
+      !current_value(false).is_a? NO_VALUE_SET
     end
 
     def to_hash
       as_hash = { name: name, options: {} }
-      %i{description title identifier type required value}.each do |field|
+      %i{description title identifier type required value sensitive}.each do |field|
         val = send(field)
         next if val.nil?
 
@@ -334,7 +338,7 @@ module Inspec
     #--------------------------------------------------------------------------#
 
     def to_s
-      "Input #{name} with #{current_value}"
+      "Input #{name} with value " + (sensitive ? "*** (senstive)" : "#{current_value}")
     end
 
     #--------------------------------------------------------------------------#
@@ -348,7 +352,7 @@ module Inspec
       # skip if we are not doing an exec call (archive/vendor/check)
       return unless Inspec::BaseCLI.inspec_cli_command == :exec
 
-      proposed_value = current_value
+      proposed_value = current_value(false)
       if proposed_value.nil? || proposed_value.is_a?(NO_VALUE_SET)
         error = Inspec::Input::RequiredError.new
         error.input_name = name
@@ -363,7 +367,7 @@ module Inspec
       type_req = type
       return if type_req == "Any"
 
-      proposed_value = current_value
+      proposed_value = current_value(false)
 
       invalid_type = false
       if type_req == "Regexp"

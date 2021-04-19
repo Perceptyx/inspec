@@ -1,6 +1,9 @@
 #!/usr/bin/env powershell
 
 #Requires -Version 5
+# https://stackoverflow.com/questions/9948517
+# TODO: Set-StrictMode -Version Latest
+$PSDefaultParameterValues['*:ErrorAction']='Stop'
 $ErrorActionPreference = 'Stop'
 $env:HAB_ORIGIN = 'ci'
 $env:CHEF_LICENSE = 'accept-no-persist'
@@ -36,14 +39,13 @@ Write-Host "--- Installing $pkg_ident/$pkg_artifact"
 hab pkg install -b $project_root/results/$pkg_artifact
 
 Write-Host "--- Downloading Ruby + DevKit"
-[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-(New-Object System.Net.WebClient).DownloadFile('https://github.com/oneclick/rubyinstaller2/releases/download/RubyInstaller-2.6.5-1/rubyinstaller-devkit-2.6.5-1-x64.exe', 'c:\\rubyinstaller-devkit-2.6.5-1-x64.exe')
+aws s3 cp s3://core-buildkite-cache-chef-prod/rubyinstaller-devkit-2.6.6-1-x64.exe c:/rubyinstaller-devkit-2.6.6-1-x64.exe
 
 Write-Host "--- Installing Ruby + DevKit"
-Start-Process c:\rubyinstaller-devkit-2.6.5-1-x64.exe -ArgumentList '/verysilent /dir=C:\\ruby26' -Wait
+Start-Process c:\rubyinstaller-devkit-2.6.6-1-x64.exe -ArgumentList '/verysilent /dir=C:\\ruby26' -Wait
 
 Write-Host "--- Cleaning up installation"
-Remove-Item c:\rubyinstaller-devkit-2.6.5-1-x64.exe -Force
+Remove-Item c:\rubyinstaller-devkit-2.6.6-1-x64.exe -Force
 
 $Env:Path += ";C:\ruby26\bin;C:\hab\bin"
 

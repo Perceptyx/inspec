@@ -1,8 +1,8 @@
 # Copyright 2015 Dominik Richter
 
-require "forwardable"
-require "openssl"
-require "pathname"
+require "forwardable" unless defined?(Forwardable)
+require "openssl" unless defined?(OpenSSL)
+require "pathname" unless defined?(Pathname)
 require "inspec/input_registry"
 require "inspec/cached_fetcher" # TODO: split or rename
 require "inspec/source_reader"
@@ -12,6 +12,7 @@ require "inspec/method_source"
 require "inspec/dependencies/cache"
 require "inspec/dependencies/lockfile"
 require "inspec/dependencies/dependency_set"
+require "inspec/utils/json_profile_summary"
 
 module Inspec
   class Profile
@@ -93,6 +94,7 @@ module Inspec
       @input_values = options[:inputs]
       @tests_collected = false
       @libraries_loaded = false
+      @state = :loaded
       @check_mode = options[:check_mode] || false
       @parent_profile = options[:parent_profile]
       @legacy_profile_path = options[:profiles_path] || false
@@ -145,7 +147,12 @@ module Inspec
         options[:profile_context] ||
         Inspec::ProfileContext.for_profile(self, @backend)
 
-      @supports_platform = metadata.supports_platform?(@backend)
+      if metadata.supports_platform?(@backend)
+        @supports_platform = true
+      else
+        @supports_platform = false
+        @state = :skipped
+      end
       @supports_runtime = metadata.supports_runtime?
     end
 
@@ -159,6 +166,10 @@ module Inspec
 
     def writable?
       @writable
+    end
+
+    def failed?
+      @state == :failed
     end
 
     #
@@ -196,7 +207,7 @@ module Inspec
     end
 
     def collect_tests(include_list = @controls)
-      unless @tests_collected
+      unless @tests_collected || failed?
         return unless supports_platform?
 
         locked_dependencies.each(&:collect_tests)
@@ -205,18 +216,26 @@ module Inspec
           next if content.nil? || content.empty?
 
           abs_path = source_reader.target.abs_path(path)
-          @runner_context.load_control_file(content, abs_path, nil)
+          begin
+            @runner_context.load_control_file(content, abs_path, nil)
+          rescue => e
+            @state = :failed
+            raise Inspec::Exceptions::ProfileLoadFailed, "Failed to load source for #{path}: #{e}"
+          end
         end
         @tests_collected = true
       end
-      filter_controls(@runner_context.all_rules, include_list)
+      @runner_context.all_rules
     end
 
-    def filter_controls(controls_array, include_list)
-      return controls_array if include_list.nil? || include_list.empty?
+    # This creates the list of controls provided in the --controls options which need to be include
+    # for evaluation.
+    def include_controls_list
+      return [] if @controls.nil? || @controls.empty?
 
+      included_controls = @controls
       # Check for anything that might be a regex in the list, and make it official
-      include_list.each_with_index do |inclusion, index|
+      included_controls.each_with_index do |inclusion, index|
         next if inclusion.is_a?(Regexp)
         # Insist the user wrap the regex in slashes to demarcate it as a regex
         next unless inclusion.start_with?("/") && inclusion.end_with?("/")
@@ -224,21 +243,14 @@ module Inspec
         inclusion = inclusion[1..-2] # Trim slashes
         begin
           re = Regexp.new(inclusion)
-          include_list[index] = re
+          included_controls[index] = re
         rescue RegexpError => e
           warn "Ignoring unparseable regex '/#{inclusion}/' in --control CLI option: #{e.message}"
-          include_list[index] = nil
+          included_controls[index] = nil
         end
       end
-      include_list.compact!
-
-      controls_array.select do |c|
-        id = ::Inspec::Rule.rule_id(c)
-        include_list.any? do |inclusion|
-          # Try to see if the inclusion is a regex, and if it matches
-          inclusion == id || (inclusion.is_a?(Regexp) && inclusion =~ id)
-        end
-      end
+      included_controls.compact!
+      included_controls
     end
 
     def load_libraries
@@ -248,24 +260,27 @@ module Inspec
         d = dep.profile
         # this will force a dependent profile load so we are only going to add
         # this metadata if the parent profile is supported.
-        if supports_platform? && !d.supports_platform?
+        if @supports_platform && !d.supports_platform?
           # since ruby 1.9 hashes are ordered so we can just use index values here
+          # TODO: NO! this is a violation of encapsulation to an extreme
           metadata.dependencies[i][:status] = "skipped"
           msg = "Skipping profile: '#{d.name}' on unsupported platform: '#{d.backend.platform.name}/#{d.backend.platform.release}'."
-          metadata.dependencies[i][:skip_message] = msg
+          metadata.dependencies[i][:status_message] = msg
+          metadata.dependencies[i][:skip_message] = msg # Repeat as skip_message for backward compatibility
           next
         elsif metadata.dependencies[i]
           # Currently wrapper profiles will load all dependencies, and then we
           # load them again when we dive down. This needs to be re-done.
           metadata.dependencies[i][:status] = "loaded"
         end
-        c = d.load_libraries
+
+        # rubocop:disable Layout/ExtraSpacing
+        c = d.load_libraries                           # !!!RECURSE!!!
         @runner_context.add_resources(c)
       end
 
-      libs = libraries.map do |path, content|
-        [content, path]
-      end
+      # TODO: why?!? we own both sides of this code
+      libs = libraries.map(&:reverse)
 
       @runner_context.load_libraries(libs)
       @libraries_loaded = true
@@ -321,12 +336,13 @@ module Inspec
       res[:sha256] = sha256
       res[:parent_profile] = parent_profile unless parent_profile.nil?
 
-      if !supports_platform?
+      if @supports_platform
+        res[:status_message] = @status_message || ""
+        res[:status] = failed? ? "failed" : "loaded"
+      else
         res[:status] = "skipped"
         msg = "Skipping profile: '#{name}' on unsupported platform: '#{backend.platform.name}/#{backend.platform.release}'."
-        res[:skip_message] = msg
-      else
-        res[:status] = "loaded"
+        res[:status_message] = msg
       end
 
       # convert legacy os-* supports to their platform counterpart
@@ -452,6 +468,10 @@ module Inspec
       params[:controls].values.length
     end
 
+    def set_status_message(msg)
+      @status_message = msg.to_s
+    end
+
     # generates a archive of a folder profile
     # assumes that the profile was checked before
     def archive(opts)
@@ -463,27 +483,38 @@ module Inspec
       end
 
       # remove existing archive
-      File.delete(dst) if dst.exist?
+      FileUtils.rm_f(dst) if dst.exist?
       @logger.info "Generate archive #{dst}."
 
       # filter files that should not be part of the profile
       # TODO ignore all .files, but add the files to debug output
 
+      # Generate temporary inspec.json for archive
+      Inspec::Utils::JsonProfileSummary.produce_json(
+        info: info,
+        write_path: "#{root_path}inspec.json",
+        suppress_output: true
+      )
+
       # display all files that will be part of the archive
       @logger.debug "Add the following files to archive:"
       files.each { |f| @logger.debug "    " + f }
+      @logger.debug "    inspec.json"
 
       if opts[:zip]
         # generate zip archive
         require "inspec/archive/zip"
         zag = Inspec::Archive::ZipArchiveGenerator.new
-        zag.archive(root_path, files, dst)
+        zag.archive(root_path, files.push("inspec.json"), dst)
       else
         # generate tar archive
         require "inspec/archive/tar"
         tag = Inspec::Archive::TarArchiveGenerator.new
-        tag.archive(root_path, files, dst)
+        tag.archive(root_path, files.push("inspec.json"), dst)
       end
+
+      # Cleanup
+      FileUtils.rm_f("#{root_path}inspec.json")
 
       @logger.info "Finished archive generation."
       true
@@ -557,7 +588,7 @@ module Inspec
       # get all dependency checksums
       deps = Hash[locked_dependencies.list.map { |k, v| [k, v.profile.sha256] }]
 
-      res = OpenSSL::Digest::SHA256.new
+      res = OpenSSL::Digest.new("SHA256")
       files = source_reader.tests.to_a + source_reader.libraries.to_a +
         source_reader.data_files.to_a +
         [["inspec.yml", source_reader.metadata.content]] +

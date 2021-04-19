@@ -6,7 +6,10 @@ export HAB_ORIGIN='ci'
 export PLAN='inspec'
 export CHEF_LICENSE="accept-no-persist"
 export HAB_LICENSE="accept-no-persist"
-project_root="$(git rev-parse --show-toplevel)"
+export project_root="$(git rev-parse --show-toplevel)"
+export HAB_NONINTERACTIVE=true
+export HAB_NOCOLORING=true
+export HAB_STUDIO_SECRET_HAB_NONINTERACTIVE=true
 
 echo "--- system details"
 uname -a
@@ -40,11 +43,13 @@ if [ -f ./results/last_build.env ]; then
     cat ./results/last_build.env
     . ./results/last_build.env
     export pkg_artifact
-    export project_root
 fi
 
 echo "+++ Installing ${pkg_ident:?is undefined}"
 hab pkg install -b "${project_root:?is undefined}/results/${pkg_artifact:?is undefined}"
+
+echo "--- Removing world readability from /usr/local/bundle"
+chmod go-w /usr/local/bundle
 
 echo "+++ Testing $PLAN"
 

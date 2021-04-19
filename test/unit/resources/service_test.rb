@@ -369,7 +369,19 @@ describe "Inspec::Resources::Service" do
 
   # macos test
   it "verify mac osx service parsing" do
-    resource = MockLoader.new(:osx104).load_resource("service", "ssh")
+    resource = MockLoader.new(:macos10_10).load_resource("service", "ssh")
+    params = Hashie::Mash.new({})
+    _(resource.type).must_equal "darwin"
+    _(resource.name).must_equal "org.openbsd.ssh-agent"
+    _(resource.description).must_be_nil
+    _(resource.installed?).must_equal true
+    _(resource.enabled?).must_equal true
+    _(resource.running?).must_equal true
+    _(resource.params).must_equal params
+  end
+
+  it "verify macos 10.16 (11 / big sur) service parsing" do
+    resource = MockLoader.new(:macos10_16).load_resource("service", "ssh")
     params = Hashie::Mash.new({})
     _(resource.type).must_equal "darwin"
     _(resource.name).must_equal "org.openbsd.ssh-agent"
@@ -381,7 +393,7 @@ describe "Inspec::Resources::Service" do
   end
 
   it "verify mac osx service parsing with not-running service" do
-    resource = MockLoader.new(:osx104).load_resource("service", "FilesystemUI")
+    resource = MockLoader.new(:macos10_10).load_resource("service", "FilesystemUI")
     params = Hashie::Mash.new({})
     _(resource.type).must_equal "darwin"
     _(resource.name).must_equal "com.apple.FilesystemUI"
@@ -393,7 +405,7 @@ describe "Inspec::Resources::Service" do
   end
 
   it "verify mac osx service parsing with default launchd_service" do
-    resource = MockLoader.new(:osx104).load_resource("launchd_service", "ssh")
+    resource = MockLoader.new(:macos10_10).load_resource("launchd_service", "ssh")
     params = Hashie::Mash.new({})
     _(resource.type).must_equal "darwin"
     _(resource.name).must_equal "org.openbsd.ssh-agent"
@@ -411,6 +423,19 @@ describe "Inspec::Resources::Service" do
     _(resource.type).must_equal "sysv"
     _(resource.name).must_equal "sshd"
     _(resource.description).must_be_nil
+    _(resource.installed?).must_equal true
+    _(resource.enabled?).must_equal true
+    _(resource.running?).must_equal true
+    _(resource.params).must_equal params
+  end
+
+  # yocto
+  it "verify yocto service parsing" do
+    resource = MockLoader.new(:yocto).load_resource("service", "sshd")
+    params = Hashie::Mash.new({ "ActiveState" => "active", "Description" => "OpenSSH server daemon", "Id" => "sshd.service", "LoadState" => "loaded", "Names" => "sshd.service", "SubState" => "running", "UnitFileState" => "enabled" })
+    _(resource.type).must_equal "systemd"
+    _(resource.name).must_equal "sshd.service"
+    _(resource.description).must_equal "OpenSSH server daemon"
     _(resource.installed?).must_equal true
     _(resource.enabled?).must_equal true
     _(resource.running?).must_equal true

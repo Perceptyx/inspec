@@ -26,8 +26,6 @@ describe "The license acceptance mechanism" do
       it "should write a YAML file" do
         without_license do
           Dir.mktmpdir do |tmp_home|
-            skip_windows! # can't find license file
-
             license_persist_path = "#{tmp_home}/.chef/accepted_licenses/inspec"
 
             _(File.exist?(license_persist_path)).must_equal false # Sanity check
@@ -128,8 +126,6 @@ describe "The license acceptance mechanism" do
             file_format: 1
           EOY
           _(File.exist?(license_persist_path)).must_equal true # Sanity check
-
-          skip_windows! # exit code 1
 
           run_result = run_inspec_process("shell -c platform.family", env: { "HOME" => tmp_home })
 

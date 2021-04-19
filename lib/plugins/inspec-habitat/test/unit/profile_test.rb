@@ -1,8 +1,8 @@
 require "mixlib/log"
-require "fileutils"
+require "fileutils" unless defined?(FileUtils)
 require "minitest/autorun"
 require "inspec/backend"
-require_relative "../../lib/inspec-habitat/profile.rb"
+require_relative "../../lib/inspec-habitat/profile"
 
 class InspecPlugins::Habitat::ProfileTest < Minitest::Test
   def setup
@@ -15,7 +15,7 @@ class InspecPlugins::Habitat::ProfileTest < Minitest::Test
 
     # Path from `__FILE__` needed to support running tests in `inspec/inspec`
     @test_profile_path = File.join(
-      File.expand_path(File.dirname(__FILE__)),
+      __dir__,
       "../",
       "support",
       "example_profile"
@@ -187,7 +187,7 @@ class InspecPlugins::Habitat::ProfileTest < Minitest::Test
 
     mock = Minitest::Mock.new
     mock.expect(:lockfile, mock_lock_file)
-    mock.expect(:vendor!, nil)
+    mock.expect(:vendor!, nil, [@hab_profile.options])
     mock.expect(:make_readable, nil)
 
     Inspec::ProfileVendor.stub :new, mock do

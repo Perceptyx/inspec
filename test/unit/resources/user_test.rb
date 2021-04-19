@@ -114,19 +114,19 @@ describe "Inspec::Resources::User" do
   end
 
   it "read user on freebsd" do
-    resource = MockLoader.new(:freebsd10).load_resource("user", "root")
+    resource = MockLoader.new(:freebsd11).load_resource("user", "fzipi")
     _(resource.exists?).must_equal true
-    _(resource.group).must_equal "root"
-    _(resource.groups).must_equal ["root"]
-    _(resource.home).must_equal "/root"
-    _(resource.shell).must_equal "/bin/csh"
+    _(resource.group).must_equal "fzipi"
+    _(resource.groups).must_equal %w{fzipi wheel users}
+    _(resource.home).must_equal "/home/fzipi"
+    _(resource.shell).must_equal "/usr/local/bin/bash"
     _(resource.mindays).must_be_nil
     _(resource.maxdays).must_be_nil
     _(resource.warndays).must_be_nil
   end
 
   it "read user on OSX" do
-    resource = MockLoader.new(:osx104).load_resource("user", "chartmann")
+    resource = MockLoader.new(:macos10_10).load_resource("user", "chartmann")
     _(resource.exists?).must_equal true
     _(resource.group).must_equal "staff"
     _(resource.groups).must_equal ["staff", "com.apple.sharepoint.group.1", "everyone"]

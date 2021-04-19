@@ -1,4 +1,4 @@
-require "pry"
+autoload :Pry, "pry"
 
 module Inspec
   # A pry based shell for inspec. Given a runner (with a configured backend and
@@ -36,8 +36,13 @@ module Inspec
       end
 
       # configure pry shell prompt
-      Pry.config.prompt_name = "inspec"
-      Pry.prompt = [proc { "#{readline_ignore("\e[1m\e[32m")}#{Pry.config.prompt_name}> #{readline_ignore("\e[0m")}" }]
+      Pry::Prompt.add(
+        :inspec,
+        "inspec custom prompt"
+      ) do |_context, _nesting, _pry_instance, _sep|
+        "#{readline_ignore("\e[1m\e[32m")}inspec> #{readline_ignore("\e[0m")}"
+      end
+      Pry.config.prompt = Pry::Prompt[:inspec]
 
       # Add a help menu as the default intro
       Pry.hooks.add_hook(:before_session, "inspec_intro") do
@@ -64,7 +69,7 @@ module Inspec
 
         pry.pager.open do |pager|
           pager.print pry.config.output_prefix
-          Pry::ColorPrinter.pp(value, pager, Pry::Terminal.width! - 1)
+          Pry::ColorPrinter.pp(value, pager, Pry::Output.new(pry).width - 1)
         end
       end
     end
@@ -132,7 +137,7 @@ module Inspec
         end
 
         info += "#{mark "Web Reference:"}\n\n"
-        info += "https://www.inspec.io/docs/reference/resources/#{topic}\n\n"
+        info += "https://docs.chef.io/inspec/resources/#{topic}\n\n"
         puts info
       else
         begin
@@ -203,7 +208,7 @@ module Inspec
 
           its('content') { should_not match /^MyKey:\\s+some value/ }
 
-        For more examples, see: https://www.inspec.io/docs/reference/matchers/
+        For more examples, see: https://docs.chef.io/inspec/matchers/
 
       EOL
     end

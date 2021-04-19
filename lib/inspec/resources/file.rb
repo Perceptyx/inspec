@@ -1,6 +1,6 @@
 # copyright: 2015, Vulcano Security GmbH
 
-require "shellwords"
+require "shellwords" unless defined?(Shellwords)
 require "inspec/utils/parser"
 
 module Inspec::Resources
@@ -17,12 +17,12 @@ module Inspec::Resources
   # TODO: rename file_resource.rb
   class FileResource < Inspec.resource(1)
     include FilePermissionsSelector
-    include LinuxMountParser
+    include Inspec::Utils::LinuxMountParser
 
     name "file"
     supports platform: "unix"
     supports platform: "windows"
-    desc "Use the file InSpec audit resource to test all system file types, including files, directories, symbolic links, named pipes, sockets, character devices, block devices, and doors."
+    desc "Use the file InSpec audit resource to test all system file types, including files, directories, symbolic links, etc."
     example <<~EXAMPLE
       describe file('path') do
         it { should exist }

@@ -4,10 +4,10 @@ require "bundler"
 require "bundler/gem_helper"
 require "rake/testtask"
 require "train"
-# require_relative "tasks/maintainers" # TODO: bring back after we push faraday_middleware fix upstream
 require_relative "tasks/spdx"
 require "fileutils"
 
+Bundler::GemHelper.install_tasks name: "inspec-core"
 Bundler::GemHelper.install_tasks name: "inspec"
 
 def prompt(message)
@@ -89,7 +89,6 @@ namespace :test do
   # rubocop:disable Style/BlockDelimiters,Layout/ExtraSpacing,Lint/AssignmentInCondition
 
   def n_threads_run(n_workers, jobs)
-    require "thread"
     queue = Queue.new
 
     jobs.each do |job|
@@ -156,6 +155,7 @@ namespace :test do
   end
   task parallel: [:accept_license] # given isolated being green, why is this needed?
 
+  desc "Run test files in multiple threads"
   task :isolated do
     require "fileutils"
 
@@ -254,13 +254,6 @@ namespace :test do
   end
   # Inject a prerequisite task
   task unit: [:accept_license]
-
-  task :resources do
-    tests = Dir["test/unit/resources/*_test.rb"]
-    return if tests.empty?
-
-    sh(Gem.ruby, "test/docker_test.rb", *tests)
-  end
 
   task :integration, [:os] do |task, args|
     concurrency = ENV["CONCURRENCY"] || 1
@@ -509,17 +502,4 @@ end
 desc "Show the version of this gem"
 task :version do
   inspec_version
-end
-
-desc "Release a new docker image"
-task :release_docker do
-  version = Inspec::VERSION
-  cmd = "rm *.gem; gem build *gemspec && "\
-        "mv *.gem inspec.gem && "\
-        "docker build -t chef/inspec:#{version} . && "\
-        "docker push chef/inspec:#{version} && "\
-        "docker tag chef/inspec:#{version} chef/inspec:latest &&"\
-        "docker push chef/inspec:latest"
-  puts "--> #{cmd}"
-  sh("sh", "-c", cmd)
 end

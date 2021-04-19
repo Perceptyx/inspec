@@ -13,10 +13,11 @@ class MockLoader
     debian7: { name: "debian", family: "debian", release: "7", arch: "x86_64" },
     debian8: { name: "debian", family: "debian", release: "8", arch: "x86_64" },
     debian10: { name: "debian", family: "debian", release: "buster/sid", arch: "x86_64" },
-    freebsd10: { name: "freebsd", family: "freebsd", release: "10", arch: "amd64" },
-    freebsd11: { name: "freebsd", family: "freebsd", release: "11", arch: "amd64" },
-    freebsd12: { name: "freebsd", family: "freebsd", release: "12", arch: "amd64" },
-    osx104: { name: "mac_os_x", family: "darwin", release: "10.10.4", arch: nil },
+    freebsd10: { name: "freebsd", family: "bsd", release: "10", arch: "amd64" },
+    freebsd11: { name: "freebsd", family: "bsd", release: "11", arch: "amd64" },
+    freebsd12: { name: "freebsd", family: "bsd", release: "12", arch: "amd64" },
+    macos10_10: { name: "mac_os_x", family: "darwin", release: "10.10.4", arch: nil },
+    macos10_16: { name: "darwin", family: "darwin", release: "10.16", arch: nil },
     ubuntu1204: { name: "ubuntu", family: "debian", release: "12.04", arch: "x86_64" },
     ubuntu1404: { name: "ubuntu", family: "debian", release: "14.04", arch: "x86_64" },
     ubuntu1504: { name: "ubuntu", family: "debian", release: "15.04", arch: "x86_64" },
@@ -24,6 +25,8 @@ class MockLoader
     mint17: { name: "linuxmint", family: "debian", release: "17.3", arch: "x86_64" },
     mint18: { name: "linuxmint", family: "debian", release: "18", arch: "x86_64" },
     windows: { name: "windows", family: "windows", release: "6.2.9200", arch: "x86_64" },
+    windows2016: { name: "windows_server_2016_datacenter", family: "windows", release: "10.0.14393", arch: "x86_64" },
+    windows2019: { name: "windows_server_2019_datacenter", family: "windows", release: "10.0.17763", arch: "x86_64" },
     wrlinux: { name: "wrlinux", family: "redhat", release: "7.0(3)I2(2)", arch: "x86_64" },
     solaris11: { name: "solaris", family: "solaris", release: "11", arch: "i386" },
     solaris10: { name: "solaris", family: "solaris", release: "10", arch: "i386" },
@@ -31,6 +34,7 @@ class MockLoader
     aix: { name: "aix", family: "aix", release: "7.2", arch: "powerpc" },
     amazon: { name: "amazon", family: "redhat", release: "2015.03", arch: "x86_64" },
     amazon2: { name: "amazon", family: "redhat", release: "2", arch: "x86_64" },
+    yocto: { name: "yocto", family: "yocto", release: "0.0.1", arch: "aarch64" },
     undefined: { name: nil, family: nil, release: nil, arch: nil },
   }
 
@@ -49,7 +53,7 @@ class MockLoader
   def backend
     return @backend if defined?(@backend)
 
-    scriptpath = ::File.expand_path "../..", __FILE__
+    scriptpath = ::File.expand_path "..", __dir__
 
     # create mock backend
     @backend = Inspec::Backend.create(Inspec::Config.mock)
@@ -189,16 +193,21 @@ class MockLoader
       mock.mock_command("", "", stderr, 1)
     }
 
+    # DEV NOTES: Most of the key=>value pairs below represent inspec commands=>responses to mock in testing.
+    #   "cf04ce5615167da0133540398aa9989bf48b3d15a615f08f97eafaeec6e5b2ba" => cmd.call("get-wmiobject"),
+    # In this ^^^ case, the key is the sha256sum of the script that is sent to the 'inspec.powershell' method in resources/wmi.rb
+    # And the content of 'get-wmiobject' can be found in this file: 'test/fixtures/cmd/get-wmiobject'. If you change the script
+    # that the inspec resource sends, you have to calculate the new sha256sum of it and update it here
     mock_cmds = {
       "" => empty.call,
       "sh -c 'find /no/such/mock -type f -maxdepth 1'" => empty.call,
       'type "brew"' => empty.call,
-      'bash -c \'type "pip"\'' => empty.call,
-      'bash -c \'type "/test/path/pip"\'' => empty.call,
-      'bash -c \'type "Rscript"\'' => empty.call,
-      'bash -c \'type "perl"\'' => empty.call,
-      'bash -c \'type "/sbin/auditctl"\'' => empty.call,
-      'bash -c \'type "sql"\'' => cmd_exit_1.call,
+      'sh -c \'type "pip"\'' => empty.call,
+      'sh -c \'type "/test/path/pip"\'' => empty.call,
+      'sh -c \'type "Rscript"\'' => empty.call,
+      'sh -c \'type "perl"\'' => empty.call,
+      'sh -c \'type "/sbin/auditctl"\'' => empty.call,
+      'sh -c \'type "sql"\'' => cmd_exit_1.call,
       'type "pwsh"' => empty.call,
       'type "netstat"' => empty.call,
       "sh -c 'find /etc/apache2/ports.conf -type l -maxdepth 1'" => empty.call,
@@ -208,7 +217,7 @@ class MockLoader
       'find /sys/class/net/eth1/ -maxdepth 1 -type f -exec sh -c \'echo "[$(basename {})]"; cat {} || echo -n\' \;' => empty.call,
       "Get-Package -Name 'Not available' | ConvertTo-Json" => empty.call,
       "ps axo pid,pcpu,pmem,vsz,rss,tty,stat,start,time,user,command" => cmd.call("ps-axo"),
-      "ps axo label,pid,pcpu,pmem,vsz,rss,tty,stat,start,time,user:32,command" => cmd.call("ps-axoZ"),
+      "ps wwaxo label,pid,pcpu,pmem,vsz,rss,tty,stat,start,time,user:32,command" => cmd.call("ps-axoZ"),
       "ps -o pid,vsz,rss,tty,stat,time,ruser,args" => cmd.call("ps-busybox"),
       "env" => cmd.call("env"),
       "${Env:PATH}" => cmd.call("$env-PATH"),
@@ -245,7 +254,7 @@ class MockLoader
       "Get-Package -Name 'Mozilla Firefox' | ConvertTo-Json" => cmd.call("get-package-firefox"),
       "Get-Package -Name 'Ruby 2.1.6-p336-x64' | ConvertTo-Json" => cmd.call("get-package-ruby"),
       'Get-Command "choco"' => empty.call,
-      'bash -c \'type "choco"\'' => cmd_exit_1.call,
+      'sh -c \'type "choco"\'' => cmd_exit_1.call,
       '(choco list --local-only --exact --include-programs --limit-output \'nssm\') -Replace "\|", "=" | ConvertFrom-StringData | ConvertTo-JSON' => cmd.call("choco-list-nssm"),
       '(choco list --local-only --exact --include-programs --limit-output \'git\') -Replace "\|", "=" | ConvertFrom-StringData | ConvertTo-JSON' => empty.call,
       "New-Object -Type PSObject | Add-Member -MemberType NoteProperty -Name Service -Value (Get-Service -Name 'dhcp'| Select-Object -Property Name, DisplayName, Status) -PassThru | Add-Member -MemberType NoteProperty -Name WMI -Value (Get-WmiObject -Class Win32_Service | Where-Object {$_.Name -eq 'dhcp' -or $_.DisplayName -eq 'dhcp'} | Select-Object -Property StartMode, StartName) -PassThru | ConvertTo-Json" => cmd.call("get-service-dhcp"),
@@ -267,7 +276,7 @@ class MockLoader
       "rmsock f0000000000000001 tcpcb" => cmd.call("rmsock-f0001"),
       "rmsock f0000000000000002 tcpcb" => cmd.call("rmsock-f0002"),
       # packages on windows
-      "f7718ece69188bb19cd458e2aeab0a8d968f3d40ac2f4199e21cc976f8db5ef6" => cmd.call("get-item-property-package"),
+      "6785190b3df7291a7622b0b75b0217a9a78bd04690bc978df51ae17ec852a282" => cmd.call("get-item-property-package"),
       # service status upstart on ubuntu
       "initctl status ssh" => cmd.call("initctl-status-ssh"),
       # upstart version on ubuntu
@@ -299,7 +308,8 @@ class MockLoader
       "id chartmann" => cmd.call("id-chartmann"),
       "dscl -q . -read /Users/chartmann NFSHomeDirectory PrimaryGroupID RecordName UniqueID UserShell" => cmd.call("dscl"),
       # user info for freebsd
-      "pw usershow root -7" => cmd.call("pw-usershow-root-7"),
+      "id fzipi" => cmd.call("id-fzipi"),
+      "pw usershow fzipi -7" => cmd.call("pw-usershow-fzipi-7"),
       # user info for windows (winrm 1.6.0, 1.6.1)
       "c603a7d32732390b1ed57ebd56fd176fecdb2035f005d33482de9adb1ddb4447" => cmd.call("adsiusers"),
       # group info for windows
@@ -313,6 +323,13 @@ class MockLoader
       "/sbin/ip -br -6 address show dev eth0" => cmd.call("interface-addresses-6"),
       "Get-NetAdapter | Select-Object -Property Name, InterfaceDescription, Status, State, MacAddress, LinkSpeed, ReceiveLinkSpeed, TransmitLinkSpeed, Virtual | ConvertTo-Json" => cmd.call("Get-NetAdapter"),
       "Get-NetIPAddress | Select-Object -Property IPv6Address, IPv4Address, InterfaceAlias, PrefixLength | ConvertTo-Json" => cmd.call("Get-NetIPAddress"),
+      "ifconfig en0" => cmd.call("ifconfig-en0"),
+      # network interfaces
+      "ls /sys/class/net" => cmd.call("ls-sys-class-net"),
+      "ifconfig -a" => cmd.call("ifconfig-a"),
+      "ifconfig em0" => cmd.call("ifconfig-em0"),
+      "ifconfig lo0" => cmd.call("ifconfig-lo0"),
+      "Get-NetAdapter | Select-Object -Property Name | ConvertTo-Json" => cmd.call("Get-NetAdapter-Name"),
       # bridge on linux
       "ls -1 /sys/class/net/br0/brif/" => cmd.call("ls-sys-class-net-br"),
       # bridge on Windows
@@ -327,13 +344,13 @@ class MockLoader
       "host -t AAAA example.com" => cmd.call("host-AAAA-example.com"),
       "ping -W 1 -c 1 example.com" => cmd.call("ping-example.com"),
       # apt
-      "find /etc/apt/ -name *.list -exec sh -c 'cat {} || echo -n' \\;" => cmd.call("etc-apt"),
+      "find /etc/apt/ -name \"*.list\" -exec sh -c 'cat {} || echo -n' \\;" => cmd.call("etc-apt"),
       # iptables
       "/usr/sbin/iptables  -S" => cmd.call("iptables-s"),
-      %{bash -c 'type "/usr/sbin/iptables"'} => empty.call,
+      %{sh -c 'type "/usr/sbin/iptables"'} => empty.call,
       # ip6tables
       "/usr/sbin/ip6tables  -S" => cmd.call("ip6tables-s"),
-      %{bash -c 'type "/usr/sbin/ip6tables"'} => empty.call,
+      %{sh -c 'type "/usr/sbin/ip6tables"'} => empty.call,
       # apache_conf
       "sh -c 'find /etc/apache2/ports.conf -type f -maxdepth 1'" => cmd.call("find-apache2-ports-conf"),
       "sh -c 'find /etc/httpd/conf.d/*.conf -type f -maxdepth 1'" => cmd.call("find-httpd-ssl-conf"),
@@ -365,7 +382,7 @@ class MockLoader
       # xinetd configuration
       "find /etc/xinetd.d -type f" => cmd.call("find-xinetd.d"),
       # wmi test
-      "2979ebeb80a475107d85411f109209a580ccf569071b3dc7acff030b8635c6b9" => cmd.call("get-wmiobject"),
+      "cf04ce5615167da0133540398aa9989bf48b3d15a615f08f97eafaeec6e5b2ba" => cmd.call("get-wmiobject"),
       # user info on hpux
       "logins -x -l root" => cmd.call("logins-x"),
       # packages on hpux
@@ -426,9 +443,9 @@ class MockLoader
       # get-process cmdlet for processes resource
       '$Proc = Get-Process -IncludeUserName | Where-Object {$_.Path -ne $null } | Select-Object PriorityClass,Id,CPU,PM,VirtualMemorySize,NPM,SessionId,Responding,StartTime,TotalProcessorTime,UserName,Path | ConvertTo-Csv -NoTypeInformation;$Proc.Replace("""","").Replace("`r`n","`n")' => cmd.call("get-process_processes"),
       # host resource: TCP/UDP reachability check on linux
-      %{bash -c 'type "nc"'} => empty.call,
-      %{bash -c 'type "ncat"'} => empty.call,
-      %{bash -c 'type "timeout"'} => empty.call,
+      %{sh -c 'type "nc"'} => empty.call,
+      %{sh -c 'type "ncat"'} => empty.call,
+      %{sh -c 'type "timeout"'} => empty.call,
       %{strings `which bash` | grep -qE '/dev/(tcp|udp)/'} => empty.call,
       %{echo | nc -v -w 1 -u example.com 1234} => empty.call,
       %{echo | nc -v -w 1  example.com 1234} => empty.call,
@@ -444,10 +461,10 @@ class MockLoader
       # host resource: test-netconnection for reachability check on windows
       "Test-NetConnection -ComputerName microsoft.com -WarningAction SilentlyContinue -RemotePort 1234| Select-Object -Property ComputerName, TcpTestSucceeded, PingSucceeded | ConvertTo-Json" => cmd.call("Test-NetConnection"),
       # postgres tests
-      %q{bash -c 'type "psql"'} => cmd.call("bash -c type psql"),
+      %q{sh -c 'type "psql"'} => cmd.call("sh -c type psql"),
       %q(psql --version | awk '{ print $NF }' | awk -F. '{ print $1"."$2 }') => cmd.call("psql-version"),
       # mssql tests
-      "bash -c 'type \"sqlcmd\"'" => cmd.call("mssql-sqlcmd"),
+      "sh -c 'type \"sqlcmd\"'" => cmd.call("mssql-sqlcmd"),
       "cb0efcd12206e9690c21ac631a72be9dd87678aa048e6dae16b8e9353ab6dd64" => cmd.call("mssql-getdate"),
       "7109e5d809058cd3e9cad108e21e91234d2638db4a4f81fadfde21e071a423dc" => cmd.call("mssql-getdate"),
       "5c2bc0f0568d11451d6cf83aff02ee3d47211265b52b6c5d45f8e57290b35082" => cmd.call("mssql-getdate"),
@@ -458,12 +475,12 @@ class MockLoader
       "4b550bb227058ac5851aa0bc946be794ee46489610f17842700136cf8bb5a0e9" => cmd.call("mssql-getdate"),
       "7d1a7a0f2bd1e7da9a6904e1f28981146ec01a0323623e12a8579d30a3960a79" => cmd.call("mssql-result"),
       # oracle
-      "bash -c 'type \"sqlplus\"'" => cmd.call("oracle-cmd"),
+      "sh -c 'type \"sqlplus\"'" => cmd.call("oracle-cmd"),
       "1998da5bc0f09bd5258fad51f45447556572b747f631661831d6fcb49269a448" => cmd.call("oracle-result"),
       # nginx mock cmd
       %{nginx -V 2>&1} => cmd.call("nginx-v"),
       %{/usr/sbin/nginx -V 2>&1} => cmd.call("nginx-v"),
-      %{bash -c 'type "/usr/sbin/nginx"'} => cmd.call("bash-c-type-nginx"),
+      %{sh -c 'type "/usr/sbin/nginx"'} => cmd.call("sh-c-type-nginx"),
       # needed for two differnt inspec.command call formats
       # host resource: dig commands,
       "dig +short A example.com" => cmd.call("dig-A-example.com"),
@@ -483,7 +500,7 @@ class MockLoader
       "firewall-cmd --zone=public --list-sources" => cmd.call("firewall-cmd-sources-bound"),
       "firewall-cmd --zone=default --list-sources" => cmd.call("firewall-cmd-sources-bound"),
       "firewall-cmd --zone=public --query-rich-rule=rule family=ipv4 source address=192.168.0.14 accept" => cmd.call("firewall-cmd-has-rule-enabled"),
-      "bash -c 'type \"firewall-cmd\"'" => cmd.call("firewall-cmd"),
+      "sh -c 'type \"firewall-cmd\"'" => cmd.call("firewall-cmd"),
       "rpm -qia firewalld" => cmd.call("pkg-info-firewalld"),
       "systemctl is-active sshd --quiet" => empty.call,
       "systemctl is-active apache2 --quiet" => empty.call,
@@ -499,7 +516,7 @@ class MockLoader
       'type "lsof"' => empty.call,
       "test -f /etc/mysql/debian.cnf && cat /etc/mysql/debian.cnf" => empty.call,
       # http resource - remote worker'
-      %{bash -c 'type "curl"'} => cmd.call("bash-c-type-curl"),
+      %{sh -c 'type "curl"'} => cmd.call("sh-c-type-curl"),
       "curl -i -X GET --connect-timeout 60 --max-time 120 'http://www.example.com'" => cmd.call("http-remote-no-options"),
       "curl -i -X GET --connect-timeout 60 --max-time 120 --location --max-redirs 1 'http://www.example.com'" => cmd.call("http-remote-max-redirs"),
       "curl -i -X GET --connect-timeout 60 --max-time 120 --user 'user:pass' 'http://www.example.com'" => cmd.call("http-remote-basic-auth"),
@@ -546,8 +563,8 @@ class MockLoader
     if @platform && @platform[:name] == "alpine"
       mock_cmds.merge!(
         "ps --help" => cmd_stderr.call("ps-help-busybox"),
-        %{bash -c 'type "netstat"'} => cmd_exit_1.call,
-        %{bash -c 'type "ss"'} => cmd_exit_1.call,
+        %{sh -c 'type "netstat"'} => cmd_exit_1.call,
+        %{sh -c 'type "ss"'} => cmd_exit_1.call,
         %{which "ss"} => cmd_exit_1.call,
         %{which "netstat"} => empty.call,
         "netstat -tulpen" => cmd.call("netstat-tulpen-busybox")
@@ -555,8 +572,8 @@ class MockLoader
     else
       mock_cmds.merge!(
         "ps --help" => empty.call,
-        %{bash -c 'type "ss"'} => empty.call,
-        %{bash -c 'type "netstat"'} => empty.call,
+        %{sh -c 'type "ss"'} => empty.call,
+        %{sh -c 'type "netstat"'} => empty.call,
         "ss -tulpen" => cmd.call("ss-tulpen"),
         "netstat -tulpen" => cmd.call("netstat-tulpen")
       )
@@ -587,7 +604,7 @@ class MockLoader
   end
 
   def self.home # "home" of the repo (not test!)... I really dislike this name
-    File.expand_path "../../..", __FILE__
+    File.expand_path "../..", __dir__
   end
 
   def self.profile_path(name)

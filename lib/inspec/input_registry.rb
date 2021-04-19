@@ -1,5 +1,5 @@
-require "forwardable"
-require "singleton"
+require "forwardable" unless defined?(Forwardable)
+require "singleton" unless defined?(Singleton)
 require "inspec/input"
 require "inspec/secrets"
 require "inspec/exceptions"
@@ -14,9 +14,11 @@ module Inspec
     extend Forwardable
 
     class Error < Inspec::Error; end
+
     class ProfileLookupError < Error
       attr_accessor :profile_name
     end
+
     class InputLookupError < Error
       attr_accessor :profile_name
       attr_accessor :input_name
@@ -28,6 +30,8 @@ module Inspec
     def_delegator :inputs_by_profile, :key?, :profile_known?
     def_delegator :inputs_by_profile, :select
     def_delegator :profile_aliases, :key?, :profile_alias?
+
+    attr_accessor :cache_inputs
 
     def initialize
       # Keyed on String profile_name => Hash of String input_name => Input object
@@ -43,6 +47,9 @@ module Inspec
         activator.activate!
         activator.implementation_class.new
       end
+
+      # Activate caching for inputs by default
+      @cache_inputs = true
     end
 
     #-------------------------------------------------------------#
@@ -75,6 +82,7 @@ module Inspec
     def find_or_register_input(input_name, profile_name, options = {})
       input_name = input_name.to_s
       profile_name = profile_name.to_s
+      options[:event].value = Thor::CoreExt::HashWithIndifferentAccess.new(options[:event].value) if options[:event]&.value.is_a?(Hash)
 
       if profile_alias?(profile_name) && !profile_aliases[profile_name].nil?
         alias_name = profile_name
@@ -84,7 +92,7 @@ module Inspec
 
       # Find or create the input
       inputs_by_profile[profile_name] ||= {}
-      if inputs_by_profile[profile_name].key?(input_name)
+      if inputs_by_profile[profile_name].key?(input_name) && cache_inputs
         inputs_by_profile[profile_name][input_name].update(options)
       else
         inputs_by_profile[profile_name][input_name] = Inspec::Input.new(input_name, options)
@@ -165,14 +173,47 @@ module Inspec
             raise ArgumentError, "ERROR: An '=' is required when using --input. Usage: --input input_name1=input_value1 input2=value2"
           end
         end
-        input_name, input_value = pair.split("=")
+        pair = pair.match(/(.*?)=(.*)/)
+        input_name, input_value = pair[1], pair[2]
+        input_value = parse_cli_input_value(input_name, input_value)
         evt = Inspec::Input::Event.new(
-          value: input_value.chomp(","), # Trim trailing comma if any
+          value: input_value,
           provider: :cli,
           priority: 50
         )
         find_or_register_input(input_name, profile_name, event: evt)
       end
+    end
+
+    # Remove trailing commas, resolve type.
+    def parse_cli_input_value(input_name, given_value)
+      value = given_value.chomp(",") # Trim trailing comma if any
+      case value
+      when /^true|false$/i
+        value = !!(value =~ /true/i)
+      when /^-?\d+$/
+        value = value.to_i
+      when /^-?\d+\.\d+$/
+        value = value.to_f
+      when /^(\[|\{).*(\]|\})$/
+        # Look for complex values and try to parse them.
+        require "yaml"
+        begin
+          value = YAML.load(value)
+        rescue Psych::SyntaxError => yaml_error
+          # It could be that we just tried to run JSON through the YAML parser.
+          require "json" unless defined?(JSON)
+          begin
+            value = JSON.parse(value)
+          rescue JSON::ParserError => json_error
+            msg = "Unparseable value '#{value}' for --input #{input_name}.\n"
+            msg += "When treated as YAML, error: #{yaml_error.message}\n"
+            msg += "When treated as JSON, error: #{json_error.message}"
+            Inspec::Log.warn msg
+          end
+        end
+      end
+      value
     end
 
     def bind_inputs_from_runner_api(profile_name, input_hash)
@@ -283,6 +324,7 @@ module Inspec
         profile_name,
         type: input_options[:type],
         required: input_options[:required],
+        sensitive: input_options[:sensitive],
         event: evt
       )
     end

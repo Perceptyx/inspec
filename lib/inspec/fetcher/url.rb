@@ -1,7 +1,7 @@
-require "uri"
-require "openssl"
-require "tempfile"
-require "open-uri"
+require "uri" unless defined?(URI)
+require "openssl" unless defined?(OpenSSL)
+require "tempfile" unless defined?(Tempfile)
+require "open-uri" unless defined?(OpenURI)
 
 module Inspec::Fetcher
   class Url < Inspec.fetcher(1)
@@ -127,8 +127,7 @@ module Inspec::Fetcher
     end
 
     def sha256
-      file = @archive_path || temp_archive_path
-      OpenSSL::Digest::SHA256.digest(File.read(file)).unpack("H*")[0]
+      @archive_shasum ||= OpenSSL::Digest.digest("SHA256", File.read(@archive_path || temp_archive_path)).unpack("H*")[0]
     end
 
     def file_type_from_remote(remote)

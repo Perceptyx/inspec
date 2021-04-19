@@ -147,6 +147,28 @@ describe "input plugins" do
 end
 
 #=========================================================================================#
+#                             Reporter plugin type
+#=========================================================================================#
+describe "reporter plugins" do
+  # The test reporter plugin returns a single line of output, like this:
+  # pXX:cYY:tZZ
+  # where XX is the count of profiles
+  #       YY is the count of controls
+  #       ZZ is the count of tests
+  let(:env) { { INSPEC_CONFIG_DIR: "#{config_dir_path}/reporter_plugin" } }
+
+  # Test a flat profile - dependencies/profile_c is a simple one
+  describe "when using a custom reporter on a profile with one control" do
+    it "finds the single control" do
+      cmd = "exec #{profile_path}/dependencies/profile_c --reporter test-fixture"
+      run_result = run_inspec_process(cmd, env: env)
+      _(run_result.stderr).must_be_empty
+      _(run_result.stdout).must_include "p1c1t1"
+    end
+  end
+end
+
+#=========================================================================================#
 #                           inspec plugin command
 #=========================================================================================#
 # See lib/plugins/inspec-plugin-manager-cli/test
@@ -155,11 +177,9 @@ end
 #                                Plugin Disable Messaging
 #=========================================================================================#
 describe "disable plugin usage message integration" do
-  it "mentions the --disable-{user,core}-plugins options" do
+  it "mentions the --disable-user-plugins option" do
     outcome = inspec("help")
-    ["--disable-user-plugins", "--disable-core-plugins"].each do |option|
-      _(outcome.stdout).must_include(option)
-    end
+    _(outcome.stdout).must_include("--disable-user-plugins")
   end
 end
 
@@ -324,8 +344,9 @@ describe "train plugin support" do
     end
 
     it "can run inspec shell and read a file" do
-      outcome = inspec_with_env("shell -t test-fixture:// -c 'file(\"any-path\").content'", INSPEC_CONFIG_DIR: File.join(config_dir_path, "train-test-fixture"))
-      skip_windows!
+      # The test fixture always returns the same content regardless of path
+      outcome = inspec_with_env("shell -t test-fixture:// -c 'file(%q{/opt/any-path}).content'", INSPEC_CONFIG_DIR: File.join(config_dir_path, "train-test-fixture"))
+
       _(outcome.stdout.chomp).must_equal "Lorem Ipsum"
 
       _(outcome.stderr).must_be_empty
@@ -334,9 +355,9 @@ describe "train plugin support" do
     end
 
     it "can run inspec shell and run a command" do
-      outcome = inspec_with_env("shell -t test-fixture:// -c 'command(\"echo hello\").exit_status'", INSPEC_CONFIG_DIR: File.join(config_dir_path, "train-test-fixture"))
+      # The test fixture always returns the same stdout and the same exit code.
+      outcome = inspec_with_env("shell -t test-fixture:// -c 'command(%q{echo hello}).exit_status'", INSPEC_CONFIG_DIR: File.join(config_dir_path, "train-test-fixture"))
 
-      skip_windows!
       _(outcome.stdout.chomp).must_equal "17"
 
       _(outcome.stderr).must_be_empty
@@ -344,7 +365,7 @@ describe "train plugin support" do
       assert_exit_code 0, outcome
 
       # TODO: split
-      outcome = inspec_with_env("shell -t test-fixture:// -c 'command(\"echo hello\").stdout'", INSPEC_CONFIG_DIR: File.join(config_dir_path, "train-test-fixture"))
+      outcome = inspec_with_env("shell -t test-fixture:// -c 'command(%q{echo hello}).stdout'", INSPEC_CONFIG_DIR: File.join(config_dir_path, "train-test-fixture"))
 
       _(outcome.stdout.chomp).must_equal "Mock Command Result stdout"
 

@@ -1,4 +1,4 @@
-require "json"
+require "json" unless defined?(JSON)
 
 module Inspec::Reporters
   # rubocop:disable Layout/AlignHash, Style/BlockDelimiters
@@ -8,7 +8,7 @@ module Inspec::Reporters
     end
 
     def report
-      {
+      output = {
         platform: platform,
         profiles: profiles,
         statistics: {
@@ -16,6 +16,11 @@ module Inspec::Reporters
         },
         version: run_data[:version],
       }
+
+      %w{passthrough}.each do |option|
+        output[option.to_sym] = @config[option] unless @config[option].nil?
+      end
+      output
     end
 
     private
@@ -40,13 +45,15 @@ module Inspec::Reporters
           message:      r[:message],
           exception:    r[:exception],
           backtrace:    r[:backtrace],
+          resource_class: r[:resource_class],
+          resource_params: r[:resource_params].to_s,
         }.reject { |_k, v| v.nil? }
       }
     end
 
     def profiles
-      run_data[:profiles].map { |p|
-        {
+      run_data[:profiles].map do |p|
+        res = {
           name:            p[:name],
           version:         p[:version],
           sha256:          p[:sha256],
@@ -64,10 +71,15 @@ module Inspec::Reporters
           groups:          profile_groups(p),
           controls:        profile_controls(p),
           status:          p[:status],
-          skip_message:    p[:skip_message],
+          status_message:  p[:status_message],
           waiver_data:     p[:waiver_data],
         }.reject { |_k, v| v.nil? }
-      }
+
+        # For backwards compatibility
+        res[:skip_message] = res[:status_message] if res[:status] == "skipped"
+
+        res
+      end
     end
 
     def profile_groups(profile)

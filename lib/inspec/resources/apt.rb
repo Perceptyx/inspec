@@ -24,7 +24,7 @@ require "inspec/resources/command"
 # apt-get install software-properties-common
 # add-apt-repository ppa:ubuntu-wine/ppa
 
-require "uri"
+require "uri" unless defined?(URI)
 
 module Inspec::Resources
   class AptRepository < Inspec.resource(1)
@@ -78,7 +78,7 @@ module Inspec::Resources
       return @repo_cache if defined?(@repo_cache)
 
       # load all lists
-      cmd = inspec.command("find /etc/apt/ -name \*.list -exec sh -c 'cat {} || echo -n' \\;")
+      cmd = inspec.command("find /etc/apt/ -name \"*.list\" -exec sh -c 'cat {} || echo -n' \\;")
 
       # @see https://help.ubuntu.com/community/Repositories/CommandLine#Explanation_of_the_Repository_Format
       @repo_cache = cmd.stdout.lines.map do |raw_line|
@@ -87,15 +87,17 @@ module Inspec::Resources
         active = raw_line == line
 
         # formats:
-        # deb               "http://archive.ubuntu.com/ubuntu/" wily main restricted ...
-        # deb               http://archive.ubuntu.com/ubuntu/ wily main restricted ...
-        # deb [trusted=yes] http://archive.ubuntu.com/ubuntu/ wily main restricted ...
+        # deb                          "http://archive.ubuntu.com/ubuntu/" wily main restricted ...
+        # deb                          http://archive.ubuntu.com/ubuntu/ wily main restricted ...
+        # deb [trusted=yes]            http://archive.ubuntu.com/ubuntu/ wily main restricted ...
+        # deb [arch=amd64 trusted=yes] http://archive.ubuntu.com/ubuntu/ wily main restricted ...
+        # deb cdrom:[Ubuntu 15.10 _Wily Werewolf_ - Release amd64 (20151021)]/ wily main restricted ...
 
-        words = line.split
-        words.delete_at 1 if words[1] && words[1].start_with?("[")
+        words = line.sub(/^(deb|deb-src)\s+\[.+?\]/, '\1').split
         type, url, distro, *components = words
         url = url.delete('"') if url
 
+        next if words[1] && words[1].start_with?("cdrom:") # skip unsupported apt-cdrom repos
         next if components.empty?
         next unless URI::HTTP === URI.parse(url)
         next unless %w{deb deb-src}.include? type

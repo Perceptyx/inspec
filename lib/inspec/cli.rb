@@ -4,6 +4,7 @@ require "inspec/utils/deprecation/deprecator"
 require "inspec/dist"
 require "inspec/backend"
 require "inspec/dependencies/cache"
+require "inspec/utils/json_profile_summary"
 
 module Inspec # TODO: move this somewhere "better"?
   autoload :BaseCLI,       "inspec/base_cli"
@@ -47,7 +48,8 @@ class Inspec::InspecCLI < Inspec::BaseCLI
     desc: "Allow or disable user interaction"
 
   class_option :disable_core_plugins, type: :string, banner: "", # Actually a boolean, but this suppresses the creation of a --no-disable...
-    desc: "Disable loading all plugins that are shipped in the lib/plugins directory of InSpec. Useful in development."
+    desc: "Disable loading all plugins that are shipped in the lib/plugins directory of InSpec. Useful in development.",
+    hide: true
 
   class_option :disable_user_plugins, type: :string, banner: "",
     desc: "Disable loading all plugins that the user installed."
@@ -65,7 +67,7 @@ class Inspec::InspecCLI < Inspec::BaseCLI
     desc: "A list of controls to include. Ignore all other tests."
   profile_options
   def json(target)
-    require "json"
+    require "json" unless defined?(JSON)
 
     o = config
     diagnose(o)
@@ -77,24 +79,13 @@ class Inspec::InspecCLI < Inspec::BaseCLI
     o[:vendor_cache] = Inspec::Cache.new(o[:vendor_cache])
 
     profile = Inspec::Profile.for_target(target, o)
-    info = profile.info
-    # add in inspec version
-    info[:generator] = {
-      name: "inspec",
-      version: Inspec::VERSION,
-    }
     dst = o[:output].to_s
-    if dst.empty?
-      puts JSON.dump(info)
-    else
-      if File.exist? dst
-        puts "----> updating #{dst}"
-      else
-        puts "----> creating #{dst}"
-      end
-      fdst = File.expand_path(dst)
-      File.write(fdst, JSON.dump(info))
-    end
+
+    # Write JSON
+    Inspec::Utils::JsonProfileSummary.produce_json(
+      info: profile.info,
+      write_path: dst
+    )
   rescue StandardError => e
     pretty_handle_exception(e)
   end
@@ -173,6 +164,8 @@ class Inspec::InspecCLI < Inspec::BaseCLI
     desc: "Generates a tar.gz archive."
   option :overwrite, type: :boolean, default: false,
     desc: "Overwrite existing archive."
+  option :airgap, type: :boolean, banner: "",
+    desc: "Fallback to using local archives if fetching fails."
   option :ignore_errors, type: :boolean, default: false,
     desc: "Ignore profile warnings."
   def archive(path)
@@ -202,7 +195,8 @@ class Inspec::InspecCLI < Inspec::BaseCLI
     pretty_handle_exception(e)
   end
 
-  desc "exec LOCATIONS", <<~EOT
+  desc "exec LOCATIONS", "Run all tests at LOCATIONS."
+  long_desc <<~EOT
     Run all test files at the specified LOCATIONS.
 
     Loads the given profile(s) and fetches their dependencies if needed. Then
@@ -327,10 +321,20 @@ class Inspec::InspecCLI < Inspec::BaseCLI
     desc: "A space-delimited list of local folders containing profiles whose libraries and resources will be loaded into the new shell"
   option :distinct_exit, type: :boolean, default: true,
     desc: "Exit with code 100 if any tests fail, and 101 if any are skipped but none failed (default).  If disabled, exit 0 on skips and 1 for failures."
+  option :command_timeout, type: :numeric, default: 3600,
+      desc: "Maximum seconds to allow a command to run. Default 3600.",
+      long_desc: "Maximum seconds to allow commands to run. Default 3600. A timed out command is considered an error."
+  option :inspect, type: :boolean, default: false, desc: "Use verbose/debugging output for resources."
+  option :input_file, type: :array,
+    desc: "Load one or more input files, a YAML file with values for the shell to use"
+  option :input, type: :array, banner: "name1=value1 name2=value2",
+    desc: "Specify one or more inputs directly on the command line to the shell, as --input NAME=VALUE. Accepts single-quoted YAML and JSON structures."
   def shell_func
     o = config
     diagnose(o)
     o[:debug_shell] = true
+
+    Inspec::Resource.toggle_inspect unless o[:inspect]
 
     log_device = suppress_log_output?(o) ? nil : $stdout
     o[:logger] = Logger.new(log_device)
@@ -372,12 +376,18 @@ class Inspec::InspecCLI < Inspec::BaseCLI
 
   desc "schema NAME", "print the JSON schema", hide: true
   def schema(name)
-    require "inspec/schema"
+    require "inspec/schema/output_schema"
 
-    puts Inspec::Schema.json(name)
+    puts Inspec::Schema::OutputSchema.json(name)
   rescue StandardError => e
     puts e
-    puts "Valid schemas are #{Inspec::Schema.names.join(", ")}"
+    puts "Valid schemas are #{Inspec::Schema::OutputSchema.names.join(", ")}"
+  end
+
+  desc "run_context", "used to test run-context detection", hide: true
+  def run_context
+    require "inspec/utils/telemetry/run_context_probe"
+    puts Inspec::Telemetry::RunContextProbe.guess_run_context
   end
 
   desc "version", "prints the version of this tool"
@@ -392,9 +402,18 @@ class Inspec::InspecCLI < Inspec::BaseCLI
   end
   map %w{-v --version} => :version
 
-  desc "nothing", "does nothing"
-  def nothing
-    puts "you did nothing"
+  desc "clear_cache", "clears the InSpec cache. Useful for debugging."
+  option :vendor_cache, type: :string,
+    desc: "Use the given path for caching dependencies. (default: ~/.inspec/cache)"
+  def clear_cache
+    o = config
+    configure_logger(o)
+    cache_path = o[:vendor_cache] || "~/.inspec/cache"
+    FileUtils.rm_r Dir.glob(File.expand_path(cache_path))
+
+    o[:logger] = Logger.new($stdout)
+    o[:logger].level = get_log_level(o[:log_level])
+    o[:logger].info "== InSpec cache cleared successfully =="
   end
 
   private
@@ -465,5 +484,5 @@ rescue Inspec::Plugin::V2::Exception => v2ex
   else
     Inspec::Log.error "Run again with --debug for a stacktrace."
   end
-  ui.exit Inspec::UI::EXIT_PLUGIN_ERROR
+  exit Inspec::UI::EXIT_PLUGIN_ERROR
 end

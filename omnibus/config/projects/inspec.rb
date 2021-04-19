@@ -15,7 +15,7 @@
 # limitations under the License.
 #
 
-require_relative "../../../lib/inspec/version.rb"
+require_relative "../../../lib/inspec/version"
 
 name "inspec"
 friendly_name "InSpec"
@@ -37,21 +37,21 @@ build_version Inspec::VERSION
 build_iteration 1
 
 # Load dynamically updated overrides
-overrides_path = File.expand_path("../../../../omnibus_overrides.rb", __FILE__)
+overrides_path = File.expand_path("../../../omnibus_overrides.rb", __dir__)
 instance_eval(File.read(overrides_path), overrides_path)
 
 dependency "preparation"
 
 dependency "inspec"
 
+# Remove all .dll.a and .a files needed for static linkage.
+dependency "ruby-cleanup"
 # Mark all directories world readable.
 dependency "gem-permissions"
 # Redirect all gem bat files and rb files to point to embedded ruby.
 dependency "shebang-cleanup"
 # Ensure our SSL cert files are accessible to ruby.
 dependency "openssl-customization"
-# Remove all .dll.a and .a files needed for static linkage.
-dependency "ruby-cleanup"
 
 package :rpm do
   signing_passphrase ENV["OMNIBUS_RPM_SIGNING_PASSPHRASE"]
@@ -66,7 +66,7 @@ end
 
 package :pkg do
   identifier "com.getchef.pkg.inspec"
-  signing_identity "Developer ID Installer: Chef Software, Inc. (EU3VF8YLX2)"
+  signing_identity "Chef Software, Inc. (EU3VF8YLX2)"
 end
 compress :dmg
 

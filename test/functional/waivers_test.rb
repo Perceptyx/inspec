@@ -10,6 +10,23 @@ describe "waivers" do
   let(:controls_by_id)        { run_result; @json.dig("profiles", 0, "controls").map { |c| [c["id"], c] }.to_h }
   let(:cmd)                   { "exec #{waivers_profiles_path}/#{profile_name} --input-file #{waivers_profiles_path}/#{profile_name}/files/#{waiver_file}" }
 
+  attr_accessor :out
+
+  def inspec(commandline, prefix = nil)
+    @stdout = @stderr = nil
+    self.out = super
+  end
+
+  def stdout
+    @stdout ||= out.stdout
+      .force_encoding(Encoding::UTF_8)
+  end
+
+  def stderr
+    @stderr ||= out.stderr
+      .force_encoding(Encoding::UTF_8)
+  end
+
   def assert_test_outcome(expected, control_id)
     assert_equal expected, controls_by_id.dig(control_id, "results", 0, "status")
   end
@@ -31,6 +48,8 @@ describe "waivers" do
     in_past   = !!(control_id =~ /in_past/)
     in_future = !!(control_id =~ /in_future/)
     ran       = !!(control_id !~ /not_ran/)
+    default_run = !!(control_id =~ /default_run/)
+    waiver_expired_in_past = /Waiver expired/ =~ act["message"]
 
     # higher logic
     waived      = (!expiry && !ran) || (expiry && !ran && in_future)
@@ -40,10 +59,11 @@ describe "waivers" do
     assert_instance_of Hash, act
 
     assert_stringy        act["justification"] # TODO: optional?
-    assert_equal ran,     act["run"]
+    assert_equal ran,     act["run"] unless default_run
     assert_equal waived,  act["skipped_due_to_waiver"]
     assert_stringy        act["message"] if     has_message
-    assert_equal "",      act["message"] unless has_message
+    # We supply a message indicating that the waiver has expired in all cases
+    assert_equal "",      act["message"] unless has_message || waiver_expired_in_past
   end
 
   def refute_waiver_annotation(control_id)
@@ -75,6 +95,13 @@ describe "waivers" do
       "09_waivered_expiry_in_future_ran_passes"         => "passed",
       "10_waivered_expiry_in_future_ran_fails"          => "failed",
       "11_waivered_expiry_in_future_not_ran"            => "skipped",
+      "12_waivered_expiry_in_future_z_ran_passes"       => "passed",
+      "13_waivered_expiry_in_future_z_ran_fails"        => "failed",
+      "14_waivered_expiry_in_future_z_not_ran"          => "skipped",
+      "15_waivered_expiry_in_future_string_ran_passes"  => "passed",
+      "16_waivered_expiry_in_future_string_ran_fails"   => "failed",
+      "17_waivered_expiry_in_future_string_not_ran"     => "skipped",
+      "18_waivered_no_expiry_default_run"               => "failed",
     }.each do |control_id, expected|
       it "has all of the expected outcomes #{control_id}" do
         assert_test_outcome expected, control_id
@@ -85,6 +112,19 @@ describe "waivers" do
           refute_waiver_annotation control_id
         end
       end
+    end
+  end
+
+  describe "an input and control with the same name" do
+    # This is a test for a regression articulated here:
+    # https://github.com/inspec/inspec/issues/4936
+    it "can execute when control namespace clashes with input" do
+      inspec("exec " + "#{waivers_profiles_path}/namespace-clash" + " --no-create-lockfile" + " --no-color")
+
+      _(stdout).wont_include("Control Source Code Error")
+      _(stdout).must_include "\nProfile Summary: 1 successful control, 0 control failures, 0 controls skipped\n"
+      _(stderr).must_equal ""
+      assert_exit_code 0, out
     end
   end
 

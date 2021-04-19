@@ -1,7 +1,7 @@
-require "rubygems/package"
-require "pathname"
-require "zlib"
-require "zip"
+require "rubygems/package" unless defined?(Gem::Package)
+require "pathname" unless defined?(Pathname)
+require "zlib" unless defined?(Zlib)
+require "zip" unless defined?(Zip)
 
 module Inspec
   class FileProvider
@@ -66,7 +66,7 @@ module Inspec
   end
 
   class DirProvider < FileProvider
-    attr_reader :files
+    attr_reader :files, :path
     def initialize(path)
       @files = if File.file?(path)
                  [path]
@@ -209,8 +209,10 @@ module Inspec
     def walk_tar(path, &callback)
       tar_file = Zlib::GzipReader.open(path)
       Gem::Package::TarReader.new(tar_file, &callback)
+    rescue => e
+      raise Inspec::Error, "Error opening/processing #{path}: #{e.message}"
     ensure
-      tar_file.close
+      tar_file.close if tar_file
     end
   end # class TarProvider
 

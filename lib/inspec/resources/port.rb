@@ -1,6 +1,6 @@
 require "inspec/utils/parser"
 require "inspec/utils/filter"
-require "ipaddr"
+require "ipaddr" unless defined?(IPAddr)
 
 # TODO: currently we return local ip only
 # TODO: improve handling of same port on multiple interfaces
@@ -703,7 +703,7 @@ module Inspec::Resources
   end
 
   class SolarisPorts < FreeBsdPorts
-    include SolarisNetstatParser
+    include Inspec::Utils::SolarisNetstatParser
 
     def info
       # extract all port info

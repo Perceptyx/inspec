@@ -1,4 +1,4 @@
-require "openssl"
+require "openssl" unless defined?(OpenSSL)
 require "hashie/mash"
 require "inspec/utils/file_reader"
 
@@ -34,13 +34,15 @@ module Inspec::Resources
     include FileReader
 
     # @see https://tools.ietf.org/html/rfc5280#page-23
-    def initialize(filename)
-      @certpath = filename
+    def initialize(opts)
+      @opts = options(opts)
       @issuer = nil
       @parsed_subject = nil
       @parsed_issuer = nil
       @extensions = nil
-      @cert = OpenSSL::X509::Certificate.new read_file_content(@certpath)
+      @content = @opts[:content]
+      @content ||= read_file_content(@opts[:filepath])
+      @cert = OpenSSL::X509::Certificate.new @content
     end
 
     # Forward these methods directly to OpenSSL::X509::Certificate instance
@@ -57,7 +59,7 @@ module Inspec::Resources
     def fingerprint
       return if @cert.nil?
 
-      OpenSSL::Digest::SHA1.new(@cert.to_der).to_s
+      OpenSSL::Digest.new("SHA1", @cert.to_der).to_s
     end
 
     def serial
@@ -137,7 +139,19 @@ module Inspec::Resources
     end
 
     def to_s
-      "x509_certificate #{@certpath}"
+      cert = @opts[:filepath]
+      cert ||= subject.CN
+      "x509_certificate #{cert}"
+    end
+
+    private
+
+    def options(opts)
+      if opts.is_a?(String)
+        { filepath: opts }
+      else
+        opts
+      end
     end
   end
 end

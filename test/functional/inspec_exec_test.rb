@@ -32,35 +32,36 @@ describe "inspec exec" do
     FileUtils.rm_f "#{prof}/simple-metadata/inspec.lock"
   end
 
+  it "handles '=' character on input" do
+    # This test handles a bug discovered at: https://github.com/inspec/inspec/issues/5131
+    inspec(
+      "exec " +
+      File.join(profile_path, "inputs", "with_various_values") +
+      " --no-create-lockfile" +
+      " --input my_input='ab=cde'"
+    )
+
+    _(stdout).must_include "0 failures"
+  end
+
   it "cleanly fails if mixing incompatible resource and transports" do
-    # TODO: I do not know how to test this more directly. It should be possible.
+    # TODO: It should be possible to test this more directly.
     inspec "exec -t aws:// #{profile_path}/incompatible_resource_for_transport.rb"
 
-    _(stdout).must_be_empty
-    _(stderr).must_include "Unsupported resource/backend combination: file / aws. Exiting."
+    _(stderr).must_be_empty
+    _(stdout).must_include "Unsupported resource/backend combination: file / aws. Exiting."
+    assert_exit_code 100, out
   end
 
   it "can execute the profile" do
-    inspec("exec " + example_profile + " --no-create-lockfile")
+    inspec("exec " + complete_profile + " --no-create-lockfile")
 
-    _(stdout).must_include "  ✔  tmp-1.0: Create / directory\n"
-    _(stdout).must_include "
-  ↺  example-1.0: Verify the version number of Example (1 skipped)
-     ↺  Can't find file `/tmp/example/config.yaml`
-"
-    if is_windows?
-      _(stdout).must_include "  ↺  ssh-1: Allow only SSH Protocol 2\n"
-      _(stdout).must_include "\nProfile Summary: 1 successful control, 0 control failures, 2 controls skipped\n"
-      _(stdout).must_include "\nTest Summary: 3 successful, 0 failures, 2 skipped\n"
-    else
-      _(stdout).must_include "  ✔  ssh-1: Allow only SSH Protocol 2\n"
-      _(stdout).must_include "\nProfile Summary: 2 successful controls, 0 control failures, 1 control skipped\n"
-      _(stdout).must_include "\nTest Summary: 4 successful, 0 failures, 1 skipped\n"
-    end
+    _(stdout).must_include "Host example.com"
+    _(stdout).must_include "1 successful control, "\
+      "0 control failures, 0 controls skipped"
+    _(stderr).must_be_empty
 
-    _(stderr).must_equal ""
-
-    assert_exit_code 101, out
+    assert_exit_code 0, out
   end
 
   it "executes a minimum metadata-only profile" do
@@ -82,14 +83,14 @@ Test Summary: 0 successful, 0 failures, 0 skipped
 
   it "can execute the profile and write to directory" do
     outpath = Dir.tmpdir
-    inspec("exec #{example_profile} --no-create-lockfile --reporter json:#{outpath}/foo/bar/test.json")
+    inspec("exec #{complete_profile} --no-create-lockfile --reporter json:#{outpath}/foo/bar/test.json")
 
     _(File.exist?("#{outpath}/foo/bar/test.json")).must_equal true
     _(File.stat("#{outpath}/foo/bar/test.json").size).must_be :>, 0
 
     _(stderr).must_equal ""
 
-    assert_exit_code 101, out
+    assert_exit_code 0, out
   end
 
   it "can execute --help after exec command" do
@@ -123,13 +124,13 @@ Test Summary: 0 successful, 0 failures, 0 skipped
   end
 
   it "can execute the profile with a target_id passthrough" do
-    inspec("exec #{example_profile} --no-create-lockfile --target-id 1d3e399f-4d71-4863-ac54-84d437fbc444")
+    inspec("exec #{complete_profile} --no-create-lockfile --target-id 1d3e399f-4d71-4863-ac54-84d437fbc444")
 
     _(stdout).must_include "Target ID: 1d3e399f-4d71-4863-ac54-84d437fbc444"
 
     _(stderr).must_equal ""
 
-    assert_exit_code 101, out
+    assert_exit_code 0, out
   end
 
   it "executes a metadata-only profile" do
@@ -177,6 +178,27 @@ Test Summary: 0 successful, 0 failures, 0 skipped
     assert_exit_code 100, out
   end
 
+  it "executes only specified controls when selecting the controls by literal names" do
+    inspec("exec " + File.join(profile_path, "controls-option-test") + " --no-create-lockfile --controls foo")
+    _(out.stdout).must_include "foo"
+    _(out.stdout).wont_include "bar"
+    _(out.stdout).wont_include "only-describe"
+    _(stderr).must_equal ""
+
+    assert_exit_code 0, out
+  end
+
+  it "executes only specified controls when selecting the controls by regex" do
+    inspec("exec " + File.join(profile_path, "controls-option-test") + " --no-create-lockfile --controls '/^11_pass/'")
+    _(out.stdout).must_include "11_pass"
+    _(out.stdout).must_include "11_pass2"
+    _(out.stdout).wont_include "bar"
+    _(out.stdout).wont_include "only-describe"
+    _(stderr).must_equal ""
+
+    assert_exit_code 0, out
+  end
+
   it "executes only specified controls when selecting passing controls by literal names" do
     inspec("exec " + File.join(profile_path, "filter_table") + " --no-create-lockfile --controls 2943_pass_undeclared_field_in_hash 2943_pass_irregular_row_key")
 
@@ -215,6 +237,15 @@ Test Summary: 0 successful, 0 failures, 0 skipped
     assert_exit_code 100, out
   end
 
+  it "reports whan a profile cannot be loaded" do
+    inspec("exec " + File.join(profile_path, "raise_outside_control") + " --no-create-lockfile")
+    _(stdout).must_match(/Profile:[\W]+InSpec Profile \(raise_outside_control\)/)
+
+    _(stdout).must_include "ERROR: Failed to load profile raise_outside_control: Failed to load source for controls/raises.rb: Something unforeseen..."
+
+    assert_exit_code 102, out
+  end
+
   it "can execute a simple file with the default formatter" do
     inspec("exec " + example_control + " --no-create-lockfile")
 
@@ -228,15 +259,17 @@ Test Summary: 0 successful, 0 failures, 0 skipped
 
   it "does not vendor profiles when using the a local path dependecy" do
     Dir.mktmpdir do |tmpdir|
-      command = "exec " + inheritance_profile + " --no-create-lockfile"
+      command = "exec " + inheritance_profile + " --no-create-lockfile " \
+        "--input-file=#{examples_path}/profile-attribute.yml"
       inspec_with_env(command, INSPEC_CONFIG_DIR: tmpdir)
 
       if is_windows?
-        _(stdout).must_include "Profile Summary: 0 successful controls, 0 control failures, 2 controls skipped\n"
-        _(stdout).must_include "Test Summary: 2 successful, 1 failure, 3 skipped\n"
+        _(stdout).must_include "No tests executed."
+        assert_exit_code 1, out
       else
-        _(stdout).must_include "Profile Summary: 1 successful control, 0 control failures, 1 control skipped\n"
-        _(stdout).must_include "Test Summary: 3 successful, 1 failure, 2 skipped\n"
+        _(stdout).must_include "Profile Summary: 2 successful controls, 0 control failures, 0 controls skipped\n"
+        _(stdout).must_include "Test Summary: 5 successful, 0 failures, 0 skipped\n"
+        assert_exit_code 0, out
       end
 
       cache_dir = File.join(tmpdir, "cache")
@@ -244,8 +277,6 @@ Test Summary: 0 successful, 0 failures, 0 skipped
       _(Dir.glob(File.join(cache_dir, "**", "*"))).must_be_empty
 
       _(stderr).must_equal ""
-
-      assert_exit_code 100, out
     end
   end
 
@@ -293,7 +324,7 @@ Test Summary: 0 successful, 0 failures, 0 skipped
     let(:out) { inspec("exec " + File.join(profile_path, "failures") + " --no-distinct-exit --no-create-lockfile") }
 
     it "exits with code 1" do
-      _(stdout).must_include "Profile Summary: 0 successful controls, 2 control failures, 0 controls skipped"
+      _(stdout).must_include "Profile Summary: 0 successful controls, 4 control failures, 0 controls skipped"
 
       _(stderr).must_equal ""
 
@@ -378,13 +409,13 @@ Test Summary: 2 successful, 0 failures, 0 skipped\n"
     it "should print all the results" do
       _(stdout).must_include "×  tmp-1.0: Create / directory (1 failed)"
       _(stdout).must_include "×  is expected not to be directory\n"
-      _(stdout).must_include "×  undefined method `should_nota'"
-      _(stdout).must_include "×  is expected not to be directory\n     expected `File /.directory?` to return false, got true"
+      _(stdout).must_include "×  File / \n     undefined method `should_nota'"
+      _(stdout).must_include "×  is expected not to be directory\n     expected `File /.directory?` to be falsey, got true"
       _(stdout).must_include "×  7 is expected to cmp >= 9\n"
       _(stdout).must_include "×  7 is expected not to cmp == /^\\d$/\n"
       _(stdout).must_include "✔  7 is expected to cmp == \"7\""
-      _(stdout).must_include "expected: %p" % ["01147"]
-      _(stdout).must_include "got: %p" % [is_windows? ? "040755" : "0755"]
+      _(stdout).must_include "expected: %s" % ["01147"]
+      _(stdout).must_include "got: %s" % [is_windows? ? "040755" : "0755"]
     end
   end
 
@@ -394,8 +425,8 @@ Test Summary: 2 successful, 0 failures, 0 skipped\n"
     it "should print all the results" do
       _(stdout).must_include "×  tmp-1.0: Create / directory (1 failed)"
       _(stdout).must_include "×  cmp-1.0: Using the cmp matcher for numbers (2 failed)"
-      _(stdout).must_include "×  undefined method `should_nota'"
-      _(stdout).must_include "×  is expected not to be directory\n     expected `File /.directory?` to return false, got true"
+      _(stdout).must_include "×  File / \n     undefined method `should_nota'"
+      _(stdout).must_include "×  is expected not to be directory\n     expected `File /.directory?` to be falsey, got true"
       _(stdout).must_include "✔  profiled-1: Create / directory (profile d)"
     end
   end
@@ -446,8 +477,8 @@ Test Summary: 2 successful, 0 failures, 0 skipped\n"
 
   describe "when using profiles on the supermarket" do
     it "can run supermarket profiles directly from the command line" do
-      skip_windows! # can't modify /tmp -> / because it is in supermarket
 
+      skip_windows! # Breakage confirmed, only on CI: https://buildkite.com/chef-oss/inspec-inspec-master-verify/builds/2355#2c9d032e-4a24-4e7c-aef2-1c9e2317d9e2
       inspec("exec supermarket://nathenharvey/tmp-compliance-profile --no-create-lockfile")
 
       if is_windows?
@@ -466,7 +497,7 @@ Test Summary: 2 successful, 0 failures, 0 skipped\n"
     end
 
     it "can run supermarket profiles from inspec.yml" do
-      skip_windows! # can't modify /tmp -> / because it is in supermarket
+      skip_windows! # Breakage confirmed, only on CI: https://buildkite.com/chef-oss/inspec-inspec-master-verify/builds/2355#2c9d032e-4a24-4e7c-aef2-1c9e2317d9e2
 
       inspec("exec #{File.join(profile_path, "supermarket-dep")} --no-create-lockfile")
 
@@ -525,7 +556,7 @@ Test Summary: 2 successful, 0 failures, 0 skipped\n"
 
   describe "when --password is used" do
     it "raises an exception if no password is provided" do
-      inspec("exec " + example_profile + " --password")
+      inspec("exec " + complete_profile + " --password")
 
       _(stderr).must_include "Please provide a value for --password. For example: --password=hello."
 
@@ -535,7 +566,7 @@ Test Summary: 2 successful, 0 failures, 0 skipped\n"
 
   describe "when --sudo-password is used" do
     it "raises an exception if no sudo password is provided" do
-      inspec("exec " + example_profile + " --sudo-password")
+      inspec("exec " + complete_profile + " --sudo-password")
 
       _(stderr).must_include "Please provide a value for --sudo-password. For example: --sudo-password=hello."
 
@@ -545,7 +576,7 @@ Test Summary: 2 successful, 0 failures, 0 skipped\n"
 
   describe "when --bastion-host and --proxy_command is used" do
     it "raises an exception when both flags are provided" do
-      inspec("exec " + example_profile + " -t ssh://dummy@dummy --password dummy --proxy_command dummy --bastion_host dummy")
+      inspec("exec " + complete_profile + " -t ssh://dummy@dummy --password dummy --proxy_command dummy --bastion_host dummy")
 
       _(stderr).must_include "Client error, can't connect to 'ssh' backend: Only one of proxy_command or bastion_host needs to be specified"
 
@@ -555,7 +586,7 @@ Test Summary: 2 successful, 0 failures, 0 skipped\n"
 
   describe "when --winrm-transport is used" do
     it "raises an exception when an invalid transport is given" do
-      inspec("exec " + example_profile + " -t winrm://administrator@dummy --password dummy --winrm-transport nonesuch")
+      inspec("exec " + complete_profile + " -t winrm://administrator@dummy --password dummy --winrm-transport nonesuch")
 
       _(stderr).must_include "Client error, can't connect to 'winrm' backend: Unsupported transport type: :nonesuch\n"
 
@@ -606,6 +637,32 @@ Test Summary: 2 successful, 0 failures, 0 skipped\n"
       _(controls.select { |c| c["results"][0]["status"] == "passed" }.count).must_be :>, 1
 
       assert_exit_code 100, out
+    end
+  end
+
+  describe "with a profile containing exceptions outside controls" do
+    let(:out) { inspec("exec " + File.join(profile_path, "raise_outside_control") + " --no-create-lockfile") }
+    it "gives the failure reason" do
+      _(stdout).must_include "Failure Message: Failed to load source for controls/raises.rb: Something unforeseen..."
+    end
+
+    it "exits non-zero" do
+      assert_exit_code 102, out
+    end
+  end
+
+  describe "when running both a valid profile and one that fails to load" do
+    let(:out) { inspec("exec " + File.join(profile_path, "raise_outside_control") + " " + File.join(profile_path, "basic_profile") + " --no-create-lockfile --no-color") }
+    it "gives the failure reason for the failing profile" do
+      _(stdout).must_include "Failure Message: Failed to load source for controls/raises.rb: Something unforeseen..."
+    end
+
+    it "reports results for the working profile" do
+      _(stdout).must_include "Profile Summary: 1 successful control"
+    end
+
+    it "exits non-zero" do
+      assert_exit_code 102, out
     end
   end
 
@@ -918,6 +975,112 @@ Test Summary: 2 successful, 0 failures, 0 skipped\n"
       let(:cli_args) { "--target mock://mycredset" + " --config " + File.join(config_dir_path, "json-config", "mock-credset.json") }
       it "should connect to the mock platform" do
         _(seen_platform).must_equal({ "name" => "mock", "release" => "unknown", "target_id" => "from-mock-credset-config-file" })
+      end
+    end
+  end
+
+  describe "when targeting cloud resource packs" do
+    let(:cloud_path) { profile_path + "/cloud/" }
+    let(:run_result) { run_inspec_process("exec " + cloud_profile + " " + args, env: env) }
+    let(:env) { {} }
+
+    describe "when targeting aws" do
+      let(:cloud_profile) { cloud_path + "test-aws" }
+      # Use log level FATAL to absorb WARNs from deprecataions and ERRORs from not having credentials set.
+      # An actual stacktrace then will appear as sole stderr output
+      let(:args) { "-t aws://fakecreds --log-level fatal " }
+      it "should fail to connect to aws due to lack of creds but not stacktrace" do
+        _(run_result.stderr).must_be_empty
+      end
+    end
+
+    describe "when targeting azure" do
+      let(:cloud_profile) { cloud_path + "test-azure" }
+      let(:args) { "-t azure://" }
+      it "should fail to connect to azure due to lack of creds but not stacktrace" do
+        _(run_result.stderr).must_equal "Tenant id cannot be nil\n"
+      end
+    end
+
+    describe "when targeting gcp" do
+      let(:cloud_profile) { cloud_path + "test-gcp" }
+      let(:args) { "-t gcp:// --input gcp_project_id=fakeproject" }
+      let(:env) { { GOOGLE_AUTH_SUPPRESS_CREDENTIALS_WARNINGS: 1 } }
+      it "should fail to connect to gcp due to lack of creds but not stacktrace" do
+        _(run_result.stderr).must_include "Could not load the default credentials."
+      end
+    end
+
+  end
+
+  describe "when evaluating profiles with only_if" do
+    let(:run_result) { run_inspec_process("exec #{profile}", json: true) }
+    describe "when running a profile with a variety of skips" do
+      let(:profile) { "#{profile_path}/only_if/skip-control" }
+      it "should correctly skip in individual controls" do
+        run_result
+        _(@json.dig("profiles", 0, "controls", 0, "results", 0, "status")).must_equal "passed"
+        _(@json.dig("profiles", 0, "controls", 1, "results", 0, "status")).must_equal "skipped"
+        _(@json.dig("profiles", 0, "controls", 1, "results", 0, "skip_message")).must_equal "Skipped control due to only_if condition."
+        _(@json.dig("profiles", 0, "controls", 2, "results", 0, "status")).must_equal "skipped"
+        _(@json.dig("profiles", 0, "controls", 2, "results", 0, "skip_message")).must_equal "Skipped control due to only_if condition: here is a message"
+        # 1/0 in test body
+        _(@json.dig("profiles", 0, "controls", 3, "results", 0, "status")).must_equal "skipped"
+        _(@json.dig("profiles", 0, "controls", 3, "results", 0, "skip_message")).must_equal "Skipped control due to only_if condition."
+        # 1/0 in resource declaration but it follows the only_if
+        _(@json.dig("profiles", 0, "controls", 4, "results", 0, "status")).must_equal "skipped"
+        _(@json.dig("profiles", 0, "controls", 4, "results", 0, "skip_message")).must_equal "Skipped control due to only_if condition."
+        # resource declaration but it precedes the only_if
+        _(@json.dig("profiles", 0, "controls", 5, "results", 0, "status")).must_equal "skipped"
+        _(@json.dig("profiles", 0, "controls", 5, "results", 0, "skip_message")).must_equal "Skipped control due to only_if condition."
+        # multiple only_ifs
+        _(@json.dig("profiles", 0, "controls", 6, "results", 0, "status")).must_equal "skipped"
+        _(@json.dig("profiles", 0, "controls", 6, "results", 0, "skip_message")).must_equal "Skipped control due to only_if condition: here is a different message"
+      end
+    end
+    describe "when running a profile with an only_if at the top-level" do
+      let(:profile) { "#{profile_path}/only_if/skip-file" }
+      it "should correctly skip entire files" do
+        run_result
+        # first control is in a separate file
+        _(@json.dig("profiles", 0, "controls", 0, "results", 0, "status")).must_equal "passed"
+        # Latter three are in the same file
+        _(@json.dig("profiles", 0, "controls", 1, "results", 0, "status")).must_equal "skipped"
+        _(@json.dig("profiles", 0, "controls", 2, "results", 0, "status")).must_equal "skipped"
+        _(@json.dig("profiles", 0, "controls", 3, "results", 0, "status")).must_equal "skipped"
+      end
+    end
+  end
+
+  describe "when running a profile using timeouts on a command resource" do
+    let(:profile) { "#{profile_path}/timeouts" }
+
+    describe "when using the DSL command resource option" do
+      let(:run_result) { run_inspec_process("exec #{profile}") }
+
+      it "properly timesout an inlined command resource" do
+        # Command timeout not available on local windows pipe train transports
+        skip if windows?
+        _(run_result.stderr).must_be_empty
+
+        # Control with inline timeout should be interrupted correctly
+        _(run_result.stdout).must_include "Command `sleep 10; echo oops` timed out after 2 seconds"
+        # Subsequent control must still run correctly
+        _(run_result.stdout).must_include "Command: `echo hello` exit_status is expected to cmp == 0"
+      end
+    end
+
+    describe "when using the CLI option to override the command timeout" do
+      let(:run_result) { run_inspec_process("exec #{profile} --command-timeout 1") }
+      it "properly overrides the DSL setting with the CLI timeout option" do
+        # Command timeout not available on local windows pipe train transports
+        skip if windows?
+        _(run_result.stderr).must_be_empty
+
+        # Command timeout should be interrupted correctly, with CLI timeout applied
+        _(run_result.stdout).must_include "Command `sleep 10; echo oops` timed out after 1 seconds"
+        # Subsequent control must still run correctly
+        _(run_result.stdout).must_include "Command: `echo hello` exit_status is expected to cmp == 0"
       end
     end
   end

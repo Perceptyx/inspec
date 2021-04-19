@@ -11,13 +11,13 @@ rubygems:
  - inspec-core-bin:
     gemspec_path: ./inspec-bin/
 
-docker_images:
- - inspec:
-    build_args:
-     - GEM_SOURCE: http://artifactory.chef.co/omnibus-gems-local
-
 pipelines:
- - habitat/build
+ - habitat/build:
+    env:
+     - HAB_NONINTERACTIVE: "true"
+     - HAB_NOCOLORING: "true"
+     - HAB_STUDIO_SECRET_HAB_NONINTERACTIVE: "true"
+ - docker/build
  - omnibus/release
  - omnibus/adhoc:
     definition: .expeditor/release.omnibus.yml
@@ -40,21 +40,27 @@ pipelines:
  - integration/resources:
     description: Test core resources with test-kitchen.
     definition: .expeditor/integration.resources.yml
- - integration/libraries:
-    description: Integration with plugins, gems, resource packs.
-    definition: .expeditor/integration.libraries.yml
- - integration/profiles:
-    description: Integration with compliance-profiles, and dev-sec
-    definition: .expeditor/integration.profiles.yml
- - integration/cookbooks:
-    description: Integration with the audit cookbook
-    definition: .expeditor/integration.cookbooks.yml
- - integration/automate:
-    description: Integration with Chef Automate
-    definition: .expeditor/integration.automate.yml
+ # This breaks expeditor as it does not yet exist
+ # - integration/libraries:
+ #    description: Integration with plugins, gems, resource packs.
+ #    definition: .expeditor/integration.libraries.yml
+ # - integration/profiles:
+ #    description: Integration with compliance-profiles, and dev-sec
+ #    definition: .expeditor/integration.profiles.yml
+ # - integration/cookbooks:
+ #    description: Integration with the audit cookbook
+ #    definition: .expeditor/integration.cookbooks.yml
+ # - integration/automate:
+ #    description: Integration with Chef Automate
+ #    definition: .expeditor/integration.automate.yml
  - artifact/habitat:
     description: Execute tests against the habitat artifact
     definition: .expeditor/artifact.habitat.yml
+    env:
+     - HAB_NONINTERACTIVE: "true"
+     - HAB_NOCOLORING: "true"
+     - HAB_STUDIO_SECRET_HAB_NONINTERACTIVE: "true"
+    trigger: pull_request
 
 schedules:
  - name: integration_schedule
@@ -67,7 +73,7 @@ slack:
 github:
  delete_branch_on_merge: true
  minor_bump_labels:
-  - "Version: Bump Minor"
+  - "Expeditor: Bump Minor Version"
  version_tag_format: v{{version}}
  release_branch:
   - master:
@@ -78,6 +84,9 @@ github:
      version_constraint: 2.*
   - 3-stable:
      version_constraint: 3.*
+  # We need to ensure all configs are in place to appropriately support this branch
+  # - expeditor-development:
+  #    version_constraint: 4.*
 
 changelog:
  categories:
@@ -92,7 +101,8 @@ merge_actions:
      - "Expeditor: Skip All"
      - "Expeditor: Skip Version Bump"
     only_if_modified:
-     - docs/*
+     - .expeditor/*
+     - docs-chef-io/*
      - etc/*
      - habitat/*
      - inspec-bin/*
@@ -138,12 +148,12 @@ merge_actions:
 subscriptions:
  - workload: artifact_published:unstable:inspec:{{version_constraint}}
    actions:
-    - built_in:build_docker_image
+    - trigger_pipeline:docker/build
     - bash:.expeditor/buildkite/wwwrelease.sh:
        post_commit: true
  - workload: artifact_published:current:inspec:{{version_constraint}}
    actions:
-    - built_in:tag_docker_image
+    - built_in:promote_docker_images
     - built_in:promote_habitat_packages
  - workload: artifact_published:stable:inspec:{{version_constraint}}
    actions:
@@ -151,11 +161,11 @@ subscriptions:
     - built_in:rollover_changelog
     - built_in:publish_rubygems
     - built_in:create_github_release
-    - built_in:tag_docker_image
+    - built_in:promote_docker_images
     - built_in:promote_habitat_packages
     - bash:.expeditor/publish-release-notes.sh:
        post_commit: true
-    - bash:.expeditor/purge-cdn.sh:
+    - purge_packages_chef_io_fastly:{{target_channel}}/inspec/latest:
        post_commit: true
     - bash:.expeditor/announce-release.sh:
        post_commit: true
@@ -171,3 +181,4 @@ subscriptions:
         - inspec/owners
         - inspec/inspec-core-team
     - trigger_pipeline:coverage
+    - trigger_pipeline:artifact/habitat

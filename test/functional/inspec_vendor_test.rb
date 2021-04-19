@@ -79,7 +79,6 @@ describe "example inheritance profile" do
 
       out = inspec("vendor " + tmpdir + " --overwrite")
 
-      skip_windows!
       _(out.stdout).must_include "Dependencies for profile #{tmpdir} successfully vendored to #{tmpdir}/vendor"
 
       _(File.exist?(File.join(tmpdir, "vendor"))).must_equal true
@@ -117,7 +116,7 @@ describe "example inheritance profile" do
 
       _(out.stderr).must_equal ""
 
-      skip_windows!
+      skip_windows! # Breakage confirmed, only on CI: https://buildkite.com/chef-oss/inspec-inspec-master-verify/builds/2355#2c9d032e-4a24-4e7c-aef2-1c9e2317d9e2
       assert_exit_code 100, out
     end
   end
@@ -141,7 +140,7 @@ describe "example inheritance profile" do
       # out.stdout.scan(/Dependency does not exist in the cache/).length.must_equal 1
       _(out.stdout.scan(/Fetching URL:/).length).must_equal 0
 
-      _(out.stderr).must_equal ""
+      _(out.stderr).must_include "----> creating #{dst.path}"
 
       assert_exit_code 0, out
 

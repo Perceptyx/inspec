@@ -1,11 +1,10 @@
-require "forwardable"
+require "forwardable" unless defined?(Forwardable)
 
 module Inspec
   # Resource Plugins
   # NOTE: the autoloading here is rendered moot by the fact that
   # all core plugins are `require`'d by the base inspec.rb
   module Plugins
-    autoload :Resource, "inspec/plugin/v1/plugin_types/resource"
     autoload :CLI, "inspec/plugin/v1/plugin_types/cli"
     autoload :Fetcher, "inspec/plugin/v1/plugin_types/fetcher"
     autoload :SourceReader, "inspec/plugin/v1/plugin_types/source_reader"
@@ -37,7 +36,7 @@ module Inspec
         .flatten
 
       # load bundled plugins
-      bundled_dir = File.expand_path(File.dirname(__FILE__))
+      bundled_dir = __dir__
       @paths += Dir[File.join(bundled_dir, "..", "bundles", "inspec-*.rb")].flatten
 
       # map paths to names

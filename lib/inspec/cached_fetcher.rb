@@ -1,5 +1,5 @@
 require "inspec/fetcher"
-require "forwardable"
+require "forwardable" unless defined?(Forwardable)
 
 module Inspec
   class CachedFetcher
@@ -20,6 +20,10 @@ module Inspec
     def resolved_source
       fetch
       @fetcher.resolved_source
+    end
+
+    def update_from_opts(_opts)
+      false
     end
 
     def cache_key

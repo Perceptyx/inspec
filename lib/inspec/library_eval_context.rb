@@ -1,4 +1,4 @@
-require "inspec/plugin/v1/plugin_types/resource"
+require "inspec/resource"
 require "inspec/dsl_shared"
 
 module Inspec
@@ -15,9 +15,7 @@ module Inspec
   #
   class LibraryEvalContext
     def self.create(registry, require_loader)
-      c = Class.new do
-        extend Inspec::ResourceDSL
-        include Inspec::ResourceBehaviors
+      c = Class.new(Inspec::Resource) do
         define_singleton_method :__resource_registry do
           registry
         end

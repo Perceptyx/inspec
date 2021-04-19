@@ -332,7 +332,7 @@ module Inspec
       input_name = @__rule_id # TODO: control ID slugging
       registry = Inspec::InputRegistry.instance
       input = registry.inputs_by_profile.dig(__profile_id, input_name)
-      return unless input
+      return unless input && input.has_value? && input.value.is_a?(Hash)
 
       # An InSpec Input is a datastructure that tracks a profile parameter
       # over time. Its value can be set by many sources, and it keeps a
@@ -343,19 +343,17 @@ module Inspec
       __waiver_data["skipped_due_to_waiver"] = false
       __waiver_data["message"] = ""
 
-      # Waivers should have a hash value with keys possibly including "run" and
-      # expiration_date. We only care here if it has a "run" key and it
-      # is false-like, since all non-skipped waiver operations are handled
-      # during reporting phase.
-      return unless __waiver_data.key?("run") && !__waiver_data["run"]
-
-      # OK, the intent is to skip. Does it have an expiration date, and
-      # if so, is it in the future?
+      # Does it have an expiration date, and if so, is it in the future?
+      # This sets a waiver message before checking `run: true`
       expiry = __waiver_data["expiration_date"]
       if expiry
-        if expiry.is_a?(Date)
-          # It appears that yaml.rb automagically parses dates for us
-          if expiry < Date.today # If the waiver expired, return - no skip applied
+        # YAML will automagically give us a Date or a Time.
+        # If transcoding YAML between languages (e.g. Go) the date might have also ended up as a String.
+        # A string that does not represent a valid time results in the date 0000-01-01.
+        if [Date, Time].include?(expiry.class) || (expiry.is_a?(String) && Time.new(expiry).year != 0)
+          expiry = expiry.to_time if expiry.is_a? Date
+          expiry = Time.new(expiry) if expiry.is_a? String
+          if expiry < Time.now # If the waiver expired, return - no skip applied
             __waiver_data["message"] = "Waiver expired on #{expiry}, evaluating control normally"
             return
           end
@@ -365,6 +363,12 @@ module Inspec
           ui.exit(:usage_error)
         end
       end
+
+      # Waivers should have a hash value with keys possibly including "run" and
+      # expiration_date. We only care here if it has a "run" key and it
+      # is false-like, since all non-skipped waiver operations are handled
+      # during reporting phase.
+      return unless __waiver_data.key?("run") && !__waiver_data["run"]
 
       # OK, apply a skip.
       @__skip_rule[:result] = true

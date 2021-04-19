@@ -2,6 +2,7 @@ require "functional/helper"
 
 describe "inspec shell tests" do
   include FunctionalHelper
+  let(:input_file_from_basic_input_profile) { File.join(profile_path, "inputs", "basic", "files", "flat.yaml") }
 
   parallelize_me!
 
@@ -9,6 +10,25 @@ describe "inspec shell tests" do
     def assert_shell_c(code, exit_status, json = false, stderr = "")
       json_suffix = " --reporter 'json'" if json
       command = "shell -c '#{code.tr("'", '\\\'')}'#{json_suffix}"
+      # On darwin this value is:
+      # shell -c 'describe file(\"/Users/nickschwaderer/Documents/inspec/inspec/test/functional/inspec_shell_test.rb\") do it { should exist } end' --reporter 'json'"
+      # appears to break in windows.
+      out = inspec(command)
+
+      actual = out.stderr.gsub(/\e\[(\d+)(;\d+)*m/, "") # strip ANSI color codes
+      _(actual).must_equal stderr
+
+      assert_exit_code exit_status, out
+
+      out
+    end
+
+    def assert_shell_c_with_inputs(code, input_cmd, input, exit_status, json = false, stderr = "")
+      json_suffix = " --reporter 'json'" if json
+      command = "shell -c '#{code.tr("'", '\\\'')}'#{input_cmd} #{input}#{json_suffix}"
+      # On darwin this value is:
+      # shell -c 'describe file(\"/Users/nickschwaderer/Documents/inspec/inspec/test/functional/inspec_shell_test.rb\") do it { should exist } end' --reporter 'json'"
+      # appears to break in windows.
       out = inspec(command)
 
       actual = out.stderr.gsub(/\e\[(\d+)(;\d+)*m/, "") # strip ANSI color codes
@@ -94,7 +114,26 @@ describe "inspec shell tests" do
     end
 
     it "runs anonymous tests that succeed (json output)" do
-      skip_windows!
+      skip_windows! # Breakage confirmed
+      # All skip_windows breakages have this output:
+      # Expected: ""
+      # C:/Users/some/path/inspec/inspec/lib/inspec/profile_context.rb:168:in `instance_eval': (eval):1: syntax error, unexpected tIDENTIFIER, expecting ')' (SyntaxError)
+      #   describe file(" "foo/bar/baz) do it { should exis...
+      #                    ^~~
+      #   (eval):1: syntax error, unexpected ')', expecting end-of-input
+      #   describe file(" "foo/bar/baz) do it { should exist } end
+      #                               ^
+      # from C:/Users/some/path/inspec/inspec/lib/inspec/profile_context.rb:168:in `load_with_context'
+      # from C:/Users/some/path/inspec/inspec/lib/inspec/profile_context.rb:154:in `load_control_file'
+      # from C:/Users/some/path/inspec/inspec/lib/inspec/runner.rb:250:in `eval_with_virtual_profile'
+      # from C:/Users/some/path/inspec/inspec/lib/inspec/cli.rb:400:in `run_command'
+      # from C:/Users/some/path/inspec/inspec/lib/inspec/cli.rb:339:in `shell_func'
+      # from C:/Ruby/lib/ruby/gems/2.6.0/gems/thor-1.0.1/lib/thor/command.rb:27:in `run'
+      # from C:/Ruby/lib/ruby/gems/2.6.0/gems/thor-1.0.1/lib/thor/invocation.rb:127:in `invoke_command'
+      # from C:/Ruby/lib/ruby/gems/2.6.0/gems/thor-1.0.1/lib/thor.rb:392:in `dispatch'
+      # from C:/Ruby/lib/ruby/gems/2.6.0/gems/thor-1.0.1/lib/thor/base.rb:485:in `start'
+      # from C:/Users/some/path/inspec/inspec/lib/inspec/base_cli.rb:35:in `start'
+      # from C:/Users/some/path/inspec/inspec/inspec-bin/bin/inspec:11:in `<main>'
       out = assert_shell_c("describe file(\"#{__FILE__}\") do it { should exist } end", 0, true)
       j = JSON.load(out.stdout)
       _(j.keys).must_include "version"
@@ -103,14 +142,14 @@ describe "inspec shell tests" do
     end
 
     it "runs anonymous tests that succeed" do
-      skip_windows!
+      skip_windows! # Breakage confirmed
       out = assert_shell_c("describe file(\"#{__FILE__}\") do it { should exist } end", 0)
       _(out.stdout).must_include "1 successful"
       _(out.stdout).must_include "0 failures"
     end
 
     it "runs anonymous tests that fail (json output)" do
-      skip_windows!
+      skip_windows! # Breakage confirmed
       out = assert_shell_c("describe file(\"foo/bar/baz\") do it { should exist } end", 100, true)
       j = JSON.load(out.stdout)
       _(j.keys).must_include "version"
@@ -119,14 +158,14 @@ describe "inspec shell tests" do
     end
 
     it "runs anonymous tests that fail" do
-      skip_windows!
+      skip_windows! # Breakage confirmed
       out = assert_shell_c("describe file(\"foo/bar/baz\") do it { should exist } end", 100)
       _(out.stdout).must_include "0 successful"
       _(out.stdout).must_include "1 failure"
     end
 
     it "runs controls with tests (json output)" do
-      skip_windows!
+      skip_windows! # Breakage confirmed
       out = assert_shell_c("control \"test\" do describe file(\"#{__FILE__}\") do it { should exist } end end", 0, true)
       j = JSON.load(out.stdout)
       _(j.keys).must_include "version"
@@ -135,14 +174,14 @@ describe "inspec shell tests" do
     end
 
     it "runs controls with tests" do
-      skip_windows!
+      skip_windows! # Breakage confirmed
       out = assert_shell_c("control \"test\" do describe file(\"#{__FILE__}\") do it { should exist } end end", 0)
       _(out.stdout).must_include "1 successful"
       _(out.stdout).must_include "0 failures"
     end
 
     it "runs controls with multiple tests (json output)" do
-      skip_windows!
+      skip_windows! # Breakage confirmed
       out = assert_shell_c("control \"test\" do describe file(\"#{__FILE__}\") do it { should exist } end; describe file(\"foo/bar/baz\") do it { should exist } end end", 100, true)
       j = JSON.load(out.stdout)
       _(j.keys).must_include "version"
@@ -151,10 +190,24 @@ describe "inspec shell tests" do
     end
 
     it "runs controls with multiple tests" do
-      skip_windows!
+      skip_windows! # Breakage confirmed
       out = assert_shell_c("control \"test\" do describe file(\"#{__FILE__}\") do it { should exist } end; describe file(\"foo/bar/baz\") do it { should exist } end end", 100)
       _(out.stdout).must_include "0 successful"
       _(out.stdout).must_include "1 failure"
+    end
+
+    it "loads input from external input file" do
+      skip_windows! # Breakage confirmed
+      out = assert_shell_c_with_inputs("describe input(\"a_quoted_string\") do it { should cmp \"Should not have quotes\" } end", " --input-file", input_file_from_basic_input_profile, 0)
+      _(out.stdout).must_include "1 successful"
+      _(out.stdout).must_include "0 failures"
+    end
+
+    it "loads input from input cli" do
+      skip_windows! # Breakage confirmed
+      out = assert_shell_c_with_inputs("describe input(\"test_input_01\") do it { should cmp \"value_from_cli_01\" } end", " --input", "test_input_01='value_from_cli_01'", 0)
+      _(out.stdout).must_include "1 successful"
+      _(out.stdout).must_include "0 failures"
     end
   end
 
@@ -220,7 +273,7 @@ describe "inspec shell tests" do
 
       it "provides matchers help" do
         out = do_shell("help matchers")
-        _(out.stdout).must_include "For more examples, see: https://www.inspec.io/docs/reference/matchers/"
+        _(out.stdout).must_include "For more examples, see: https://docs.chef.io/inspec/matchers/"
       end
 
       it "provides empty example help" do

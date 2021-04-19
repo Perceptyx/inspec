@@ -10,7 +10,7 @@ module AwsResourceMixin
     end
   rescue ArgumentError => e
     # continue with ArgumentError if testing
-    raise unless respond_to?(:inspec)
+    raise unless respond_to?(:inspec) && inspec
 
     raise Inspec::Exceptions::ResourceFailed, e.message
   end
@@ -61,7 +61,7 @@ module AwsResourceMixin
   rescue Aws::Errors::MissingCredentialsError
     # The AWS error here is unhelpful:
     # "unable to sign request without credentials set"
-    Inspec::Log.error "It appears that you have not set your AWS credentials.  You may set them using environment variables, or using the 'aws://region/aws_credentials_profile' target.  See https://www.inspec.io/docs/reference/platforms for details."
+    Inspec::Log.error "It appears that you have not set your AWS credentials.  You may set them using environment variables, or using the 'aws://region/aws_credentials_profile' target.  See https://docs.chef.io/inspec/platforms/ for details."
     fail_resource("No AWS credentials available")
   rescue Aws::Errors::ServiceError => e
     fail_resource e.message
